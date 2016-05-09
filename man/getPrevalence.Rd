@@ -6,7 +6,7 @@
 \usage{
 getPrevalence(lambda_S, mu_S, major_cn, minor_cn, lambda_G = NULL,
   mu_G = NULL, detail = 0, mode = "PhasedSNP", Trace = FALSE,
-  SameTumour = TRUE)
+  SameTumour = TRUE, SomaticCountAdjust = FALSE)
 }
 \arguments{
 \item{lambda_S}{: A count (or a vector of counts  if multiple samples ) of 
@@ -40,6 +40,8 @@ alleles  supporting the reference sequence  of  the Germline SNP}
 \item{mode}{The mode under which the prevalence is computed  (default : PhasedSNP , alternatives methods  are FlankingSNP and SNVOnly). Can also be provided as a numeric 0=SNVOnly, 1= PhasedSNP, 2=FlankingSNP}
 
 \item{Trace}{if set to TRUE, print the trace of the computation.}
+
+\item{SomaticCountAdjust}{when set to true, lambda_S and mu_S might be adjusted if necessary so that they meet the rules lambda_S <= lambda_G. mu_S >= mu_G and lambda_S + mu_S = lambda_G + mu_G. Not used if mode=SNVOnly,  Default = FALSE}
 }
 \value{
 The cellular prevalence if detail =0, a detailed output if detail = 1, and a condensed output if detail =2. See the usage of the parameter detail above.

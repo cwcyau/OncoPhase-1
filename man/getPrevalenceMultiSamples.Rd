@@ -2,14 +2,15 @@
 % Please edit documentation in R/OncoPhase.R
 \name{getPrevalenceMultiSamples}
 \alias{getPrevalenceMultiSamples}
-\title{Somatic mutations cellular prevalence using haplotype phasing.}
+\title{Somatic mutations cellular prevalence using haplotype phasing on a multi sample study.}
 \usage{
 getPrevalenceMultiSamples(snp_allelecount_df, ref_allelecount_df,
   major_copynumber_df, minor_copynumber_df, mode = "PhasedSNP",
   cnv_fraction = NULL, phasing_association_df = NULL,
   NormalcellContamination_df = NULL, tumoursamples = NULL,
   nbFirstColumns = 3, region = NULL, detail = TRUE, LocusRadius = 10000,
-  NoPrevalence.action = "Skip", SameTumour = TRUE)
+  NoPrevalence.action = "Skip", SameTumour = TRUE,
+  SomaticCountAdjust = FALSE)
 }
 \arguments{
 \item{snp_allelecount_df}{A data frame containing for each mutation the  allelic 
@@ -45,6 +46,8 @@ the output dataframe e.g: Chrom, Pos, Vartype. Columns from  nbFirstColumns +1 t
 e.g "chr22:179800-98767}
 
 \item{detail}{when set to TRUE, a detailed output is generated containing, the context and the detailed prevalence for each group of cells (germline cells, cells affected by one of the two genomic alterations (SNV or CNV) but not both, cells affected by  by both copynumber alteration and SNV ). Default : TRUE.}
+
+\item{SomaticCountAdjust}{when set to true, lambda_S and mu_S might be adjusted if necessary so that they meet the rules lambda_S <= lambda_G. mu_S >= mu_G and lambda_S + mu_S = lambda_G + mu_G. Not used if mode=SNVOnly,  Default = FALSE}
 
 \item{CNVfraction_df, }{If provided, represents a data frame containing for each mutation,  the fraction of
 cells affected by the copy number alteration. Used only if the mode is "PhasedSNP" and formula is "General".}

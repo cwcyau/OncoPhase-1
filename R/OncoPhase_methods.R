@@ -1,6 +1,6 @@
 
 #' @export
-getPrevalence_Matrice<-function( snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE, LocusRadius = 10000,NoPrevalence.action="Skip",Trace=FALSE,SameTumour=TRUE)
+getPrevalence_Matrice<-function( snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE, LocusRadius = 10000,NoPrevalence.action="Skip",Trace=FALSE,SameTumour=TRUE,SomaticCountAdjust=F)
 {
   
   
@@ -56,14 +56,32 @@ getPrevalence_Matrice<-function( snp_allelecount_df, ref_allelecount_df, major_c
   rownames(masterprevalence) <- rownames(somatic_snp_allelecount_df)
   masterprevalence[1:nbFirstColumns] = somatic_snp_allelecount_df[1:nbFirstColumns]
   
+ # masterprevalence=masterprevalence[listover_estimated,]
+#  mut=""
   for (imut in 1:nrow(masterprevalence))
   #for (imut in 1:5)
   {
     
+   # if(mut=="chr22_22572873_A_T")
+   
     #Mutation name and mutation position
     mut <- rownames(masterprevalence[imut,]); 
     mut_pos=as.numeric(masterprevalence[imut,"End"])
     
+   #  if(mut!=listunder_estimated[4])
+   #   next
+    
+
+   #   cat("\n mut is ", mut, "\n ********* \n ******** ")
+   # if (imut!=9)
+  #   next
+    
+  # Trace = (mut %in% listover_estimated)
+  #  if(Trace)
+  #    cat("\n\n\n Mutation", mut, "\n ======================\n====================\n\n")
+    
+   
+   
     #For each mutation, we need to extract one value or one vector (if multiple samples)  of :
     # - lambda_G and mu_G : Respectively Variant and reference coverage/count of the phased/nearby Germline Mutations
     # - lambda_S and mu_S : Respectively Variant and reference coverage/count of the somatic mutations
@@ -220,8 +238,8 @@ getPrevalence_Matrice<-function( snp_allelecount_df, ref_allelecount_df, major_c
     
     #Summarising the inputs
     # stop(30)
-    Trace=F
-    if(Trace){
+    #Trace=F
+    if(Trace ){
       cat("\n\n The inputs are : ")
       cat("\n\t lambda_somatic :\n");print( lambda_somatic)
       cat("\n\t mu_somatic  :\n");print(  mu_somatic )
@@ -238,7 +256,8 @@ getPrevalence_Matrice<-function( snp_allelecount_df, ref_allelecount_df, major_c
     if(detail)
       detail=2
 
-    prev_somatic=getPrevalence(lambda_somatic,mu_somatic,major_cn,minor_cn, lambda_LinkedGermline , mu_LinkedGermline,  detail,mode_locus,Trace,SameTumour)
+    
+    prev_somatic=getPrevalence(lambda_somatic,mu_somatic,major_cn,minor_cn, lambda_LinkedGermline , mu_LinkedGermline,  detail,mode_locus,Trace,SameTumour,SomaticCountAdjust)
     
   #  print(prev_somatic)
    # cat("\n")
@@ -298,7 +317,7 @@ getPrevalence_Matrice<-function( snp_allelecount_df, ref_allelecount_df, major_c
 #' @param Trace if set to TRUE, print the trace of the computation.    
 #'  
 #' @return   The cellular prevalence if detail =0, a detailed output if detail = 1, and a condensed output if detail =2. See the usage of the parameter detail above.
-#'      
+#' @param SomaticCountAdjust when set to true, lambda_S and mu_S might be adjusted if necessary so that they meet the rules lambda_S <= lambda_G. mu_S >= mu_G and lambda_S + mu_S = lambda_G + mu_G. Not used if mode=SNVOnly,  Default = FALSE 
 #'      
 #'     
 #'      
@@ -371,7 +390,7 @@ getPrevalence_Matrice<-function( snp_allelecount_df, ref_allelecount_df, major_c
 #' 
 #' @seealso \code{\link{getPrevalence}},  \code{\link{getPhasedSNPPrevalenceGeneral}},   \code{\link{getPrevalenceLinear}}, \code{\link{getPrevalenceSNVOnly}}                                                 
 #' @export
-getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NULL,  detail=0, mode="PhasedSNP",Trace=FALSE,SameTumour=TRUE ){
+getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NULL,  detail=0, mode="PhasedSNP",Trace=FALSE,SameTumour=TRUE,SomaticCountAdjust=FALSE ){
   
 
   N=length(lambda_S) # Number of samples
@@ -394,11 +413,13 @@ getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NUL
   }
   
   
+
+  
  
   if(mode=="PhasedSNP"){
-    prev_somatic=getPhasedSNPPrevalence( lambda_S,mu_S , major_cn,minor_cn, lambda_G , mu_G,detail,Trace=Trace )
+    prev_somatic=getPhasedSNPPrevalence( lambda_S,mu_S , major_cn,minor_cn, lambda_G , mu_G,detail,Trace=Trace,SomaticCountAdjust )
   }else if(mode=="FlankingSNP"){
-    prev_somatic=getFlankingSNPPrevalence( lambda_S,mu_S ,  major_cn,minor_cn,lambda_G , mu_G, detail,Trace=Trace,SameTumour)
+    prev_somatic=getFlankingSNPPrevalence( lambda_S,mu_S ,  major_cn,minor_cn,lambda_G , mu_G, detail,Trace=Trace,SameTumour,SomaticCountAdjust)
   }else if(mode=="SNVOnly"){
     prev_somatic=getSNVOnlyPrevalence(lambda_S,mu_S ,major_cn,minor_cn, detail, Trace=Trace )
   }else {
@@ -413,7 +434,7 @@ getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NUL
 }
 
 #' @export
-getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=0,Trace=FALSE )
+getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=0,Trace=FALSE,SomaticCountAdjust=FALSE )
   {
     #if(length(lambda_G)>1)
     {
@@ -439,14 +460,7 @@ getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G
       
     }
   
-  Normalise=T
-  if(Normalise){
-    Total_S=mu_S +lambda_S
-    Total_G=mu_G + lambda_G
-    mu_S = (mu_S/Total_S) *Total_G 
-    lambda_S = (lambda_S/Total_S) *Total_G 
-  }
-    
+
   if(detail==1)
   { prev_S = list()
   }else{
@@ -458,7 +472,9 @@ getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G
     
     for(sample in tumoursamples)
     {
-      if(Trace) cat("\n\n\n Computing the prevalence on sample :", sample)
+      
+    #  Trace=(sample=="ABpre")
+     # if(Trace) cat("\n\n\n Computing the prevalence on sample :", sample)
       args_list=list(
         lambda_S=lambda_S[sample],
         mu_S=mu_S[sample],
@@ -468,7 +484,8 @@ getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G
         mu_G=mu_G[sample],#/ omega_G[sample] - lambda_G[sample],
         # NoPrevalence.action=NoPrevalence.action,
         detail=1,
-        Trace=Trace)
+        Trace=Trace,
+        SomaticCountAdjust=SomaticCountAdjust)
       
       if(anyNA(args_list))
         next
@@ -501,13 +518,13 @@ getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G
   
 
 #' @export
-getFlankingSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=FALSE,Trace=False,SameTumour=TRUE )
+getFlankingSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=FALSE,Trace=False,SameTumour=TRUE,SomaticCountAdjust=FALSE)
   {
   
   #For each case, we compute the prevalence twice. By considering the somatic to be phased to the germline SNP or phased with the alternative chromosome harboring the reference of the Germline. The latter is achieved just by 
  
-    prevalence_phasedSNP = getPhasedSNPPrevalence(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=1,Trace=0)
-     prevalence_phasedREF= getPhasedSNPPrevalence(lambda_S,mu_S,major_cn,minor_cn, mu_G,lambda_G, detail=1, Trace=0)
+    prevalence_phasedSNP = getPhasedSNPPrevalence(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=1,Trace=0,SomaticCountAdjust=SomaticCountAdjust)
+     prevalence_phasedREF= getPhasedSNPPrevalence(lambda_S,mu_S,major_cn,minor_cn, mu_G,lambda_G, detail=1, Trace=0,SomaticCountAdjust=SomaticCountAdjust)
      
      if(Trace){
        cat("\n\n Prevalence case phased with SNP \n ")
@@ -607,10 +624,32 @@ getFlankingSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu
 
 
 #' @export
-getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G, mu_G, detail=FALSE,Trace=FALSE){
+getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G, mu_G, detail=FALSE,Trace=FALSE,SomaticCountAdjust=FALSE){
 
   Prevalence=NA
   DetailedPrevvalence=NA
+  
+  
+  if(SomaticCountAdjust){
+    
+    if(Trace){
+      cat("\n\n The input before adjustement :\n ")
+      cat(" lambda_S :", lambda_S," mu_S :", mu_S," major_cn :", major_cn," minor_cn :", minor_cn," lambda_G :", lambda_G, " mu_G :", mu_G)
+     }
+    
+    if(lambda_S > lambda_G)
+      lambda_S=lambda_G
+    if(mu_S < mu_G)
+      mu_S = mu_G
+    
+    if(mu_S < qpois(0.001,mu_G + lambda_G - lambda_S))
+      mu_S=mu_G + lambda_G - lambda_S
+
+  }
+  
+  
+  
+  
   
   #We compute the prevalence for the two contexts and we choose the one with the less residual
   if(Trace) cat("\n\n\n Context : C1 (C=0)  SNV after CNA \n **********")

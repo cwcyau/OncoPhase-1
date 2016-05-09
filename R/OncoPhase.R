@@ -236,7 +236,7 @@ numeric_column<-function(df,tumoursamples)
 
 
 
-#' Somatic mutations cellular prevalence using haplotype phasing.
+#' Somatic mutations cellular prevalence using haplotype phasing on a multi sample study.
 #' 
 #' This is a generic function to compute the cellular prevalence of somatic mutations in
 #'  cancer using haplotype phasing.  The function applies the model to a range of mutations located at a given genomic region or at the whole genome scale. The model computes the prevalence of a somatic
@@ -275,6 +275,7 @@ numeric_column<-function(df,tumoursamples)
 #' @param min_cells Minimum number of cells (default 2). In case the estimated number of cells sequenced at the locus of the mutation is less than min_cells, NA is returned.
 #' @param min_alleles Minimum number of alleles. (default 4). In case the estimated number of alleles sequenced at the locus of the mutation is less than min_alleles, NA is returned.
 #' @param detail when set to TRUE, a detailed output is generated containing, the context and the detailed prevalence for each group of cells (germline cells, cells affected by one of the two genomic alterations (SNV or CNV) but not both, cells affected by  by both copynumber alteration and SNV ). Default : TRUE.
+#' @param SomaticCountAdjust when set to true, lambda_S and mu_S might be adjusted if necessary so that they meet the rules lambda_S <= lambda_G. mu_S >= mu_G and lambda_S + mu_S = lambda_G + mu_G. Not used if mode=SNVOnly,  Default = FALSE 
 #' @return A data frame containing :
 #'  \describe{
 #'        \item{}{Column 1 to NbFirstcolumn of the input data frame snp_allelecount_df. 
@@ -312,8 +313,10 @@ numeric_column<-function(df,tumoursamples)
 #' 
 #'@seealso \code{\link{getPrevalence}}
 #' @export
-getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip",SameTumour=TRUE)
+getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip",SameTumour=TRUE,SomaticCountAdjust=FALSE)
 {
+  
+ 
   
   # Extract the somatic mutations 
   
@@ -374,10 +377,154 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
     }
   }
   
+
   
-    masterprevalence = getPrevalence_Matrice(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode,cnv_fraction, phasing_association_df,NormalcellContamination_df,tumoursamples,  nbFirstColumns, region,detail,  LocusRadius,NoPrevalence.action,SameTumour)
+  
+    masterprevalence = getPrevalence_Matrice(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode,cnv_fraction, phasing_association_df,NormalcellContamination_df,tumoursamples,  nbFirstColumns, region,detail,  LocusRadius,NoPrevalence.action,Trace=FALSE, SameTumour, SomaticCountAdjust)
 
   masterprevalence
   
+}
+
+
+
+
+
+
+#' Somatic mutations cellular prevalence on a single sample.
+#' 
+#' This is a generic function to compute the cellular prevalence of somatic mutations in
+#'  cancer.  The function applies the model to a range of mutations located at a given genomic region or at the whole genome scale. The model computes the prevalence of a somatic
+#'   mutation relatively to close and eventually phased germline mutations. It uses three sources
+#'    of information as input : The allelic counts, the phasing information and the 
+#'    copy number alteration.  Multiple tumor samples can be provided for the prevalence computation.
+#' 
+#' @param input_df A data frame containing for each mutations :
+#' \describe{
+#'        \item{lambda_S}{Alelle counts supporting the SNV}
+#'        \item{mu_S}{Alelle counts supporting the reference at the SNV locus}
+#'        \item{major_cn}{Major copy number at the SNV locus}
+#'        \item{minor_cn}{Minor copy number at the SNV locus}
+#'        \item{lambda_G}{Alelle counts supporting the SNP}
+#'        \item{mu_G}{Alelle counts supporting the reference at the SNP}
+#'      }
+#' @param nbFirstColumns Number of first columns in snp_allelecount_df to reproduce in
+#'  the output dataframe e.g: Chrom, Pos, Vartype. Columns from  nbFirstColumns +1 to the last column should contains the information needed for the prevalence computation at each tumour sample
+#' @param region The region of the genome to consider for the prevalence computation  in the format chrom:start-end 
+#' e.g "chr22:179800-98767 
+#' @param mode The mode under which the prevalence is computed  (default : PhasedSNP , alternatives methods  are FlankingSNP, OptimalSNP,and SNVOnly).  Can also be provided as a numeric 0=SNVOnly, 1= PhasedSNP, 2=FlankingSNP and 3 = OptimalSNP
+#' #@param formula The formula used to compute the prevalence. can be either "matrix" for the linear equations or "General" for the exact allele count cases. Default : Matrix
+#' @param detail when set to TRUE, a detailed output is generated containing, the context and the detailed prevalence for each group of cells (germline cells, cells affected by one of the two genomic alterations (SNV or CNV) but not both, cells affected by  by both copynumber alteration and SNV ). Default : TRUE.
+#' @return A data frame containing :
+#'  \describe{
+#'        \item{}{Column 1 to NbFirstcolumn of the input data frame snp_allelecount_df. 
+#'        This will generally include the chromosome and the position of the mutation plus
+#'        any other columns to report in the prevalence dataframe (e.g REF, ALL, ...) }
+#'         \item{}{and the following information}
+#'   \describe{
+#'        \item{Prev}{The Cellular Prevalence of the mutation}
+#'        \item{Germ}{The proportion of cells with a normal genotype}
+#'        \item{Alt}{The proportion of cells with only the CNA if the context C=C1 or with only the SNV if the context C=C2}
+#'        \item{Both}{The proportion of cells with both the SNV and the SCNA}
+#'        \item{Context}{Context at the mutation. If C1 then the SNV occured after the SCNA, if C=c2 then the SNV occured before the SCNA}
+#'        \item{residual}{Residual after limSolveapproximation.}
+#'      }
+#'      }
+#'      
+#' @examples
+#' 
+#' #Example 1: 
+#' 
+#' input_file=system.file("extdata","phylogeny1_d300_n80.tsv", package = "OncoPhase")
+#' input_df<-read.table(input_file,header=T)
+#' rownames(input_df) = input_df$mutation_id
+#' colnames(input_df) = c("mut_id", "lambda_S","mu_S","major_cn","minor_cn","lambda_G","mu_G")
+#' print(input_df)
+#' #  mut_id lambda_S mu_S major_cn minor_cn lambda_G mu_G
+#' #a      a      151  152        1        1      151  135
+#' #b      b      123  176        1        1      161  150
+#' #c      c       94  209        2        1      176  134
+#' #d      d       23  283        1        1      155  144
+#' #e      e       60  228        2        0      174  125
+#' 
+#' prevalence_df=getPrevalenceSingleSample(input_df,nbFirstColumns = 1)
+#' 
+#' print(prevalence_df)
+#'   mut_id   Prev   Germ    Alt   Both Residual Context
+#' #  a      a 0.9967 0.0017 0.0017 0.9967  3.1e-03      C1
+#' #  b      b 0.8230 0.0890 0.0890 0.8230  1.3e-03      C1
+#' #  c      c 0.4010 0.6000 0.0910 0.3100  3.9e-33      C2
+#' #  d      d 0.1500 0.4200 0.4200 0.1500  1.4e-03      C1
+#' #  e      e 0.2490 0.7500 0.0890 0.1600  5.1e-31      C2
+#' 
+#' 
+#'@seealso \code{\link{getPrevalence}}
+#' @export
+getPrevalenceSingleSample<-function(input_df,mode="PhasedSNP",NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=0, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip")
+{
+  
+  # Extract the somatic mutations 
+  
+  
+  compulsory_columns=c("lambda_S","mu_S","major_cn","minor_cn")
+  
+  if (length(setdiff(compulsory_columns,colnames(input_df)))>0){
+    stop(" The allele count master matrices should have at least the following headers
+         columns : ")
+    print(compulsory_columns)
   }
+  
+  
+  #set the mode if numeric, 0=SNVOnly, 1 = PhasedSNP, 2=FlankingSNP, 3 = OptimalSNP
+  numeric_mode=c("SNVOnly", "PhasedSNP","FlankingSNP","OptimalSNP")
+  if(is.numeric(mode))
+  {
+    if(mode %in% c(0,1,2,3))
+    {
+      mode = numeric_mode[mode +1 ]
+    }else{
+      stop("\n\n Mode parameter, if numeric,  should be either 0, 1,  2 or 3")
+    }
+  }
+  
+
+  masterprevalence=as.data.frame(matrix(nrow=nrow(input_df), ncol=nbFirstColumns+6))
+  rownames(masterprevalence) = rownames(input_df)
+  if(nbFirstColumns>0){
+    masterprevalence[1:nbFirstColumns] = input_df[1:nbFirstColumns]
+    colnames(masterprevalence) = c(colnames(input_df[1:nbFirstColumns]),"Prev", "Germ","Alt","Both","Residual","Context")
+  }else{
+    colnames(masterprevalence) = c("Prev", "Germ","Alt","Both","Residual","Context")
+  }
+
+  
+  for(imut in 1: nrow(input_df))
+  {
+    lambda_S = input_df[imut,"lambda_S"]
+    mu_S = input_df[imut,"mu_S"]
+    minor_cn=input_df[imut,"minor_cn"]
+    major_cn=input_df[imut,"major_cn"]
+    lambda_G=input_df[imut,"lambda_G"]
+    mu_G=input_df[imut,"mu_G"]
+    
+    prevalence= getPrevalence(lambda_S, mu_S, major_cn, minor_cn, lambda_G, mu_G, detail=T, mode=mode)
+    
+    if(is.na(prevalence[[1]]))
+      next
+    
+    masterprevalence[imut,"Prev"] = prevalence[[1]]$Prevalence
+    masterprevalence[imut,"Germ"] = prevalence[[1]]$DetailedPrevalence["Germ"]
+    masterprevalence[imut,"Alt"] = prevalence[[1]]$DetailedPrevalence["Alt"]
+    masterprevalence[imut,"Both"] = prevalence[[1]]$DetailedPrevalence["Both"]
+    masterprevalence[imut,"Context"] = prevalence[[1]]$Context
+    masterprevalence[imut,"Residual"] = prevalence[[1]]$ResidualNorm
+  }
+  
+  
+  
+  masterprevalence
+  
+  }
+
+
 
