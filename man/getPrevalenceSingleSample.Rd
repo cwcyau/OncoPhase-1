@@ -7,7 +7,7 @@
 getPrevalenceSingleSample(input_df, mode = "PhasedSNP",
   NormalcellContamination_df = NULL, tumoursamples = NULL,
   nbFirstColumns = 0, region = NULL, detail = TRUE, LocusRadius = 10000,
-  NoPrevalence.action = "Skip")
+  NoPrevalence.action = "Skip", SomaticCountAdjust = F)
 }
 \arguments{
 \item{input_df}{A data frame containing for each mutations :
@@ -30,6 +30,8 @@ the output dataframe e.g: Chrom, Pos, Vartype. Columns from  nbFirstColumns +1 t
 e.g "chr22:179800-98767}
 
 \item{detail}{when set to TRUE, a detailed output is generated containing, the context and the detailed prevalence for each group of cells (germline cells, cells affected by one of the two genomic alterations (SNV or CNV) but not both, cells affected by  by both copynumber alteration and SNV ). Default : TRUE.}
+
+\item{SomaticCountAdjust}{when set to true, lambda_S and mu_S might be adjusted if necessary so that they meet the rules lambda_S <= lambda_G. mu_S >= mu_G and lambda_S + mu_S = lambda_G + mu_G. Not used if mode=SNVOnly,  Default = FALSE}
 }
 \value{
 A data frame containing :

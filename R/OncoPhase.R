@@ -387,6 +387,82 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
 }
 
 
+#' @export
+getPrevalenceMultiSamples2<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip",SameTumour=TRUE,SomaticCountAdjust=FALSE)
+{
+  
+  
+  
+  # Extract the somatic mutations 
+  
+  
+  compulsory_columns=c("Chrom","End","IsGermline")
+  
+  if (length(setdiff(compulsory_columns,colnames(snp_allelecount_df)))>0){
+    stop(" The allele count master matrices should have at least the following headers
+         columns : ")
+    print(compulsory_columns)
+  }
+  
+  
+  if (length(setdiff(compulsory_columns,colnames(ref_allelecount_df)))>0){
+    stop(" The allele count master matrices should have at least the following 
+         headers columns : ")
+    print(compulsory_columns)
+  }
+  
+  if (is.null(tumoursamples)){
+    tumoursamples = colnames(snp_allelecount_df[(nbFirstColumns+1):ncol(snp_allelecount_df)])
+  }
+  
+  #print(colnames(snp_allelecount_df))
+  
+  
+  tumoursamples = Reduce(intersect,list(tumoursamples,colnames(snp_allelecount_df),
+                                        colnames(ref_allelecount_df),
+                                        colnames(major_copynumber_df), 
+                                        colnames(minor_copynumber_df)
+  ))
+  
+  if(!is.null(cnv_fraction))
+    tumoursamples =intersect(tumoursamples,colnames(cnv_fraction) )
+  
+  
+  if(length(tumoursamples) ==0)
+  {
+    stop(" None of the tumour samples provided is present in the five  matrices :
+         snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df, cnv_fraction")
+  }
+  
+  snp_allelecount_df=numeric_column(snp_allelecount_df,tumoursamples)
+  ref_allelecount_df=numeric_column(ref_allelecount_df,tumoursamples)  
+  major_copynumber_df=numeric_column(major_copynumber_df,tumoursamples)
+  minor_copynumber_df=numeric_column(minor_copynumber_df,tumoursamples)
+  if(!is.null(cnv_fraction)) cnv_fraction=numeric_column(cnv_fraction,tumoursamples)
+  
+  #set the mode if numeric, 0=SNVOnly, 1 = PhasedSNP, 2=FlankingSNP, 3 = OptimalSNP
+  numeric_mode=c("SNVOnly", "PhasedSNP","FlankingSNP","OptimalSNP")
+  if(is.numeric(mode))
+  {
+    if(mode %in% c(0,1,2,3))
+    {
+      mode = numeric_mode[mode +1 ]
+    }else{
+      stop("\n\n Mode parameter, if numeric,  should be either 0, 1,  2 or 3")
+    }
+  }
+  
+  
+  
+  
+  masterprevalence = getPrevalence_Matrice2(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode,cnv_fraction, phasing_association_df,NormalcellContamination_df,tumoursamples,  nbFirstColumns, region,detail,  LocusRadius,NoPrevalence.action,Trace=FALSE, SameTumour, SomaticCountAdjust)
+  
+  masterprevalence
+  
+  }
+
+
+
 
 
 
@@ -415,6 +491,7 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
 #' @param mode The mode under which the prevalence is computed  (default : PhasedSNP , alternatives methods  are FlankingSNP, OptimalSNP,and SNVOnly).  Can also be provided as a numeric 0=SNVOnly, 1= PhasedSNP, 2=FlankingSNP and 3 = OptimalSNP
 #' #@param formula The formula used to compute the prevalence. can be either "matrix" for the linear equations or "General" for the exact allele count cases. Default : Matrix
 #' @param detail when set to TRUE, a detailed output is generated containing, the context and the detailed prevalence for each group of cells (germline cells, cells affected by one of the two genomic alterations (SNV or CNV) but not both, cells affected by  by both copynumber alteration and SNV ). Default : TRUE.
+#' @param SomaticCountAdjust when set to true, lambda_S and mu_S might be adjusted if necessary so that they meet the rules lambda_S <= lambda_G. mu_S >= mu_G and lambda_S + mu_S = lambda_G + mu_G. Not used if mode=SNVOnly,  Default = FALSE 
 #' @return A data frame containing :
 #'  \describe{
 #'        \item{}{Column 1 to NbFirstcolumn of the input data frame snp_allelecount_df. 
@@ -460,7 +537,7 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
 #' 
 #'@seealso \code{\link{getPrevalence}}
 #' @export
-getPrevalenceSingleSample<-function(input_df,mode="PhasedSNP",NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=0, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip")
+getPrevalenceSingleSample<-function(input_df,mode="PhasedSNP",NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=0, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip" ,SomaticCountAdjust=F)
 {
   
   # Extract the somatic mutations 
@@ -507,7 +584,7 @@ getPrevalenceSingleSample<-function(input_df,mode="PhasedSNP",NormalcellContamin
     lambda_G=input_df[imut,"lambda_G"]
     mu_G=input_df[imut,"mu_G"]
     
-    prevalence= getPrevalence(lambda_S, mu_S, major_cn, minor_cn, lambda_G, mu_G, detail=T, mode=mode)
+    prevalence= getPrevalence(lambda_S, mu_S, major_cn, minor_cn, lambda_G, mu_G, detail=T, mode=mode ,SomaticCountAdjust=SomaticCountAdjust)
     
     if(is.na(prevalence[[1]]))
       next
