@@ -1,27 +1,570 @@
 
+
+
+#' Somatic mutations cellular prevalence using haplotype phasing on a multi sample study.
+#' 
+#' This is a generic function to compute the cellular prevalence of somatic mutations in
+#'  cancer using haplotype phasing.  The function applies the model to a range of mutations located at a given genomic region or at the whole genome scale. The model computes the prevalence of a somatic
+#'   mutation relatively to close and eventually phased germline mutations. It uses three sources
+#'    of information as input : The allelic counts, the phasing information and the 
+#'    copy number alteration.  Multiple tumor samples can be provided for the prevalence computation.
+#' 
+#' @param snp_allelecount_df A data frame containing for each mutation the  allelic 
+#' counts of the variant at each tumor samples. The data frame should contains at least the following three columns among its firsts columns: Chrom (The mutation
+#'  chromosome) , End (The mutation position) and IsGermline (is the mutation a germline
+#'   or somatic mutation).
+#' @param ref_allelecount_df A data frame containing for each mutation the allelic count
+#'  of the reference at each tumor sample. The data frame should contains at least the following three columns among its firsts columns:  Chrom (The mutation
+#’ chromosome) , End (The mutation position) and IsGermline (is the mutation a Germline
+#'    or Somatic mutation)  
+#' @param phasing_association_df A data frame containing for each somatic mutation, 
+#' a colon separated list of germline SNP phased to it.
+#' @param major_copynumber_df A data frame containing for each mutation, its  major
+#’ chromosomal copy number at each tumor samples.
+#' @param minor_copynumber_df A data frame containing for each mutation the minor
+#'  chromosomal copy number at each tumor samples.
+#' @param CNVfraction_df, If provided, represents a data frame containing for each mutation,  the fraction of
+#'  cells affected by the copy number alteration. Used only if the mode is "PhasedSNP" and formula is "General".
+#' @param nbFirstColumns Number of first columns in snp_allelecount_df to reproduce in
+#'  the output dataframe e.g: Chrom, Pos, Vartype. Columns from  nbFirstColumns +1 to the last column should contains the information needed for the prevalence computation at each tumour sample
+#' @param region The region of the genome to consider for the prevalence computation  in the format chrom:start-end 
+#' e.g "chr22:179800-98767 
+#' @param tumoursamples : The list of tumor samples to consider for the prevalence
+#’ computation.  This samples should be present as column header in the data frame
+#'   snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df
+#'   and  CNVfraction_df. If not provided, the headers from nbFirstColumns + 1 to 
+#'   the last column of snp_allelecount_df is retrieved and its intersection with the
+#' other inputted data frames headers is considered.
+#' @param mode The mode under which the prevalence is computed  (default : PhasedSNP , alternatives methods  are FlankingSNP, OptimalSNP,and SNVOnly).  Can also be provided as a numeric 0=SNVOnly, 1= PhasedSNP, 2=FlankingSNP and 3 = OptimalSNP
+#' #@param formula The formula used to compute the prevalence. can be either "matrix" for the linear equations or "General" for the exact allele count cases. Default : Matrix
+#' @param min_cells Minimum number of cells (default 2). In case the estimated number of cells sequenced at the locus of the mutation is less than min_cells, NA is returned.
+#' @param min_alleles Minimum number of alleles. (default 4). In case the estimated number of alleles sequenced at the locus of the mutation is less than min_alleles, NA is returned.
+#' @param detail when set to TRUE, a detailed output is generated containing, the context and the detailed prevalence for each group of cells (germline cells, cells affected by one of the two genomic alterations (SNV or CNV) but not both, cells affected by  by both copynumber alteration and SNV ). Default : TRUE.
+#' @param SomaticCountAdjust when set to true, lambda_S and mu_S might be adjusted if necessary so that they meet the rules lambda_S <= lambda_G. mu_S >= mu_G and lambda_S + mu_S = lambda_G + mu_G. Not used if mode=SNVOnly,  Default = FALSE 
+#' @return A data frame containing :
+#'  \describe{
+#'        \item{}{Column 1 to NbFirstcolumn of the input data frame snp_allelecount_df. 
+#'        This will generally include the chromosome and the position of the mutation plus
+#'        any other columns to report in the prevalence dataframe (e.g REF, ALL, ...) }
+#'         \item{}{One column per tumour sample reporting the prevalence of the mutation 
+#'         at each samples}
+#'      }
+#'      
+#' @examples
+#' 
+#' #Example 1: Loading a simple example data set with two somatic mutations, 5 germlines SNP, and 3 tumor samples
+#' data(simpleExample2)
+#' se=simpleExample2
+#' prevalence_df=getPrevalenceMultiSamples(se$snp_allelecount_df, se$ref_allelecount_df, se$major_copynumber_df,se$minor_copynumber_df,phasing_association_df=se$phasing_association_df, )
+#' print(prevalence_df)
+#' 
+#' #Chrom     End IsGermline  Tumour1        Tumour2        Tumour3
+#' #mutation2  chr2 3003000          0 C2:0|0|1 C2:0.15|0|0.85 C2:0.12|0|0.88
+#' #mutation6  chr2 4008000          0 C1:1|0|0       C1:1|0|0 C2:0|0.24|0.76
+#' 
+#' #Example 2 : Computing somatic mutation cellular prevalence on chromosome 15 of  patient 11152 (data retrieved from a parallel study)
+#' 
+#' data("chr15_OP1019")
+#' ds=chr15_OP1019
+#' masterprevalence_df=getPrevalenceMultiSamples(ds$snp_allelecount_df, ds$ref_allelecount_df,  ds$major_copynumber_df,ds$minor_copynumber_df,phasing_association_df = ds$phasing_association_df, cnv_fraction=ds$CNVFraction_df,nbFirstColumns=6,detail=FALSE)
+#' print(head(masterprevalence_df))
+#' 
+#' data("chr10_OP1019")
+#' df=chr10_OP1019
+#' masterprevalence_df=getPrevalenceMultiSamples(df$snp_allelecount_df, df$ref_allelecount_df, df$major_copynumber_df,df$minor_copynumber_df,phasing_association_df=df$phasing_association_df, cnv_fraction=df$CNVFraction_df,nbFirstColumns=6, region="chr10:50000000-180000000")
+#' print(head(masterprevalence_df))
+#' 
+#' 
+#' 
+#'@seealso \code{\link{getPrevalence}}
 #' @export
-getPrevalence_Matrice<-function( snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE, LocusRadius = 10000,NoPrevalence.action="Skip",Trace=FALSE,SameTumour=TRUE,SomaticCountAdjust=F)
+getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip",SameTumour=TRUE,SomaticCountAdjust=0,SNPmode="Average")
 {
   
   
-  #Extraction of the list of somatic mutations the cellular prevalence will be computed.
-  somatic_snp_allelecount_df = snp_allelecount_df[snp_allelecount_df$IsGermline==0, ]
-  # If a region is provided, a restriction is performed on the given region
-  if(!is.null(region)){
-    region_parts= unlist(strsplit(region,":"))
-    
-    chrom = region_parts[1]
-    startPosition = 1
-    endPosition = hg19_dfsize[chrom]
-    
-    somatic_snp_allelecount_df = somatic_snp_allelecount_df[somatic_snp_allelecount_df$Chrom == chrom , ]
-    
-    if(length(region_parts)>1){
-      coordinates = unlist(strsplit(region_parts[2],"-"))
-      startPosition = as.numeric(coordinates[1])
-      endPosition = as.numeric(coordinates[2])
-      somatic_snp_allelecount_df = somatic_snp_allelecount_df[somatic_snp_allelecount_df$Chrom == chrom & somatic_snp_allelecount_df$Start >= startPosition & somatic_snp_allelecount_df$End <= endPosition,]
+  
+  # Extract the somatic mutations 
+  
+  
+  compulsory_columns=c("Chrom","End","IsGermline")
+  
+  if (length(setdiff(compulsory_columns,colnames(snp_allelecount_df)))>0){
+    stop(" The allele count master matrices should have at least the following headers
+         columns : ")
+    print(compulsory_columns)
+  }
+  
+  
+  if (length(setdiff(compulsory_columns,colnames(ref_allelecount_df)))>0){
+    stop(" The allele count master matrices should have at least the following 
+         headers columns : ")
+    print(compulsory_columns)
+  }
+  
+  if (is.null(tumoursamples)){
+    tumoursamples = colnames(snp_allelecount_df[(nbFirstColumns+1):ncol(snp_allelecount_df)])
+  }
+  
+  #print(colnames(snp_allelecount_df))
+  
+  
+  tumoursamples = Reduce(intersect,list(tumoursamples,colnames(snp_allelecount_df),
+                                        colnames(ref_allelecount_df),
+                                        colnames(major_copynumber_df), 
+                                        colnames(minor_copynumber_df)
+  ))
+  
+  if(!is.null(cnv_fraction))
+    tumoursamples =intersect(tumoursamples,colnames(cnv_fraction) )
+  
+  
+  if(length(tumoursamples) ==0)
+  {
+    stop(" None of the tumour samples provided is present in the five  matrices :
+         snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df, cnv_fraction")
+  }
+  
+  snp_allelecount_df=numeric_column(snp_allelecount_df,tumoursamples)
+  ref_allelecount_df=numeric_column(ref_allelecount_df,tumoursamples)  
+  major_copynumber_df=numeric_column(major_copynumber_df,tumoursamples)
+  minor_copynumber_df=numeric_column(minor_copynumber_df,tumoursamples)
+  if(!is.null(cnv_fraction)) cnv_fraction=numeric_column(cnv_fraction,tumoursamples)
+  
+  #set the mode if numeric, 0=SNVOnly, 1 = PhasedSNP, 2=FlankingSNP, 3 = OptimalSNP
+  numeric_mode=c("SNVOnly", "PhasedSNP","FlankingSNP","OptimalSNP")
+  if(is.numeric(mode))
+  {
+    if(mode %in% c(0,1,2,3))
+    {
+      mode = numeric_mode[mode +1 ]
+    }else{
+      stop("\n\n Mode parameter, if numeric,  should be either 0, 1,  2 or 3")
     }
+  }
+  
+ 
+  
+    
+    #Extraction of the list of somatic mutations the cellular prevalence will be computed.
+    somatic_snp_allelecount_df = snp_allelecount_df[snp_allelecount_df$IsGermline==0, ]
+    # If a region is provided, a restriction is performed on the given region
+    if(!is.null(region)){
+      region_parts= unlist(strsplit(region,":"))
+      
+      chrom = region_parts[1]
+      startPosition = 1
+      endPosition = hg19_dfsize[chrom]
+      
+      somatic_snp_allelecount_df = somatic_snp_allelecount_df[somatic_snp_allelecount_df$Chrom == chrom , ]
+      
+      if(length(region_parts)>1){
+        coordinates = unlist(strsplit(region_parts[2],"-"))
+        startPosition = as.numeric(coordinates[1])
+        endPosition = as.numeric(coordinates[2])
+        somatic_snp_allelecount_df = somatic_snp_allelecount_df[somatic_snp_allelecount_df$Chrom == chrom & somatic_snp_allelecount_df$Start >= startPosition & somatic_snp_allelecount_df$End <= endPosition,]
+      }
+    }
+    
+    
+    #set the mode if numeric, 0=SNVOnly, 1 = PhasedSNP, 2=FlankingSNP, 3 = OptimalSNP
+    numeric_mode=c("SNVOnly", "PhasedSNP","FlankingSNP","OptimalSNP")
+    if(is.numeric(mode))
+    {
+      if(mode %in% c(0,1,2,3))
+      {
+        mode = numeric_mode[mode +1 ]
+      }else{
+        stop("\n\n Mode parameter, if numeric,  should be either 0, 1,  2 or 3")
+      }
+    }
+    
+    
+    
+    #We then  retrieve for each somatic mutation the list of germline mutations to consider for the prevalence computation
+    # a) if PhasedSNP mode, then the considered germline are the germline mutations phased to the somatic mutation and located within the same locus
+    # b) if FlankingSNP mode then the considered germline are the close germlines located within LocusRadius distance from the somatic mutation.
+    #c) if OptimalSNP mode tho columns are provided, the first for the phased germline, and if only there is not phasing information for this mutation, then the second column contains the close germlines located within LocusRadius
+    
+    
+    # LinkedGermlineMutation=getLocusGermlineMutations(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode,  LocusRadius)
+    
+    
+    
+    #Preparing the data frame to contains the somatic mutations cellular prevalences.
+    masterprevalence<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=nbFirstColumns + length(tumoursamples))
+    masterprevalence<-as.data.frame(masterprevalence)
+    colnames(masterprevalence) <- c(colnames(somatic_snp_allelecount_df[1:nbFirstColumns]),tumoursamples)
+    rownames(masterprevalence) <- rownames(somatic_snp_allelecount_df)
+    masterprevalence[1:nbFirstColumns] = somatic_snp_allelecount_df[1:nbFirstColumns]
+    
+    # masterprevalence=masterprevalence[listover_estimated,]
+    #  mut=""
+    for (imut in 1:nrow(masterprevalence))
+      #for (imut in 1:5)
+    {
+      
+      
+      #Mutation name and mutation position
+      mut <- rownames(masterprevalence[imut,]); 
+      mut_pos=as.numeric(masterprevalence[imut,"End"])
+      
+      
+      
+      #For each mutation, we need to extract one value or one vector (if multiple samples)  of :
+      # - lambda_G and mu_G : Respectively Variant and reference coverage/count of the phased/nearby Germline Mutations
+      # - lambda_S and mu_S : Respectively Variant and reference coverage/count of the somatic mutations
+      # - major_cn and minor_cn : major and minor copy number at the locus of the somatic mutations 
+      # - CNV_fraction : If provided, fraction of cells affected by the CNV
+      # - NormalCell_fraction : If provided, fraction of normal cell contamination.
+      
+      
+      
+      mode_locus=mode  # Mode to consider while computing the mutation prevalence and retrievning the germline on the same locus with the mutation
+      if(mode=="OptimalSNP") # If Mode = Optimal, then we  willtry first PhasedSNP, latter if no germline found, we  will try FlankingSNP
+        mode_locus="PhasedSNP"
+      
+      
+      ############################
+      #####Source of information 1: The list of linked germline mutations 
+      ##############
+      
+      if(mode!="SNVOnly")
+      {
+        
+        
+        
+        linked_germline_df=getLocusGermlineMutations(somatic_snp_allelecount_df[mut,], snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode_locus,  LocusRadius)
+        linked_germline=as.character(linked_germline_df[mut,"LinkedGermlines"])
+        
+        #Id mode=Optimal then in case no germline is found with PhasedSNP the search is relaunched with FlankingSNP
+        
+        if(is.null(linked_germline)|| is.na(linked_germline))
+          if((mode_locus=="PhasedSNP")&&(mode=="OptimalSNP")){
+            mode_locus="FlankingSNP"
+            
+            linked_germline_df=getLocusGermlineMutations(somatic_snp_allelecount_df[mut,], snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode_locus,  LocusRadius)
+            linked_germline=as.character(linked_germline_df[mut,"LinkedGermlines"])
+            
+            
+          }
+        
+        
+        #       cat("\n\n Linked for mutation ", mut,"\n")
+        #       print(linked_germline)
+        #       cat("\n\n mode locus ", mut,"\n")
+        #       print(mode_locus)
+        
+        if(is.null(linked_germline)|| is.na(linked_germline))
+          next
+        
+        
+        
+        
+        #List of germline mutations linked to the considered somatic mutation
+        linkedGermlines_list<-unlist(strsplit(linked_germline,":"))
+        if (length(unlist(linkedGermlines_list))==0)
+          next
+        
+        
+      }
+      
+      
+      ############################
+      #####Source of information 2: The Copy Number 
+      ##############
+      
+      #For the somatic mutation
+      if(!is.null(cnv_fraction)) phi_cn_sample_somatic = cnv_fraction[mut,tumoursamples,drop=F]
+      if(!is.null(NormalcellContamination_df))  NC_sample_somatic = NormalCellContamination_df[mut,tumoursamples,drop=F]
+      major_cn_sample_somatic = major_copynumber_df[mut,tumoursamples, drop=F]
+      minor_cn_sample_somatic = minor_copynumber_df[mut,tumoursamples,drop=F]
+      NormalContamination_sample_somatic = minor_copynumber_df[mut,tumoursamples,drop=F]
+      
+      ############################
+      #####Source of information 3: The Allele Count 
+      
+      #Somatic
+      #wellfraction_somatic =snp_allelecount_df[mut,cifs:nbcolumns_wellfraction]
+      snpwellcount_somatic =  data.matrix(snp_allelecount_df[mut,tumoursamples,drop=F])
+      refwellcount_somatic = data.matrix(ref_allelecount_df[mut,tumoursamples,drop=F])
+      
+      #Germline
+      # a) if mode_locus=PhasedSNP, according to the MLE (EM) estimation, at each sample, we consider the average counts of the linked germline.
+      # b) if mode_locus=FlankingSNP, at each sample, we consider the closest germline mutation having all the required information (Alleles Count and Copy number Information)
+      
+      if(mode_locus=="FlankingSNP" && (SNPmode=="Average"))
+      {
+        warnings("Under mode FlankingSNP, SNPmode can not be average. Snpmode=Best will be considered")
+        SNPmode="Best"
+      }
+      if(SNPmode=="Average")
+      {
+        snpwellcount_germlines=  colMeans(data.matrix(snp_allelecount_df[linkedGermlines_list,tumoursamples, drop=F]), 
+                                          na.rm=T)
+        refwellcount_germlines =colMeans( data.matrix(ref_allelecount_df[linkedGermlines_list,tumoursamples, drop=F]), 
+                                          na.rm=T)
+        
+      }else  if(SNPmode=="Closest")
+      {
+        snpwellcount_germlines=  vector("numeric",length=length(tumoursamples))
+        refwellcount_germlines = vector("numeric",length=length(tumoursamples))
+        
+        names(snpwellcount_germlines) = tumoursamples
+        names(refwellcount_germlines) = tumoursamples
+        
+        
+        #For the Linked germline mutations
+        major_cn_sample_LinkedGermline_df = major_copynumber_df[linkedGermlines_list,tumoursamples,drop=F ]
+        snp_allelecount_LinkedGermline_df= data.matrix(snp_allelecount_df[linkedGermlines_list,tumoursamples, drop=F])
+        ref_allelecount_LinkedGermline_df= data.matrix(ref_allelecount_df[linkedGermlines_list,tumoursamples, drop=F])
+        #To fix a bug when only one germline, 
+        snp_allelecount_LinkedGermline_df=as.data.frame(snp_allelecount_LinkedGermline_df)
+        ref_allelecount_LinkedGermline_df=as.data.frame(ref_allelecount_LinkedGermline_df)
+        
+        
+        for(sample in tumoursamples)
+        {
+          
+          selectedlinkedGermlines_list = rownames(major_cn_sample_LinkedGermline_df[!is.na(major_cn_sample_LinkedGermline_df[,sample]) ,sample,drop=F])
+          selectedlinkedGermlines_list = intersect(selectedlinkedGermlines_list,rownames(snp_allelecount_LinkedGermline_df[!is.na(snp_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
+          selectedlinkedGermlines_list =  intersect(selectedlinkedGermlines_list,rownames(ref_allelecount_LinkedGermline_df[!is.na(ref_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
+          
+          #Compute the distance to the somatic mutation
+          distance_germlines= snp_allelecount_df[selectedlinkedGermlines_list,"End", drop=F]
+          distance_germlines["distance"] = abs(as.numeric(distance_germlines$End) - mut_pos)
+          #select the closest germline
+          closest_germline = rownames(distance_germlines[distance_germlines$distance== min(distance_germlines$distance, na.rm=T), ])
+          
+          if(length(closest_germline)==0)
+            next
+          
+          #retrieve its allele counts
+          snpwellcount_germlines[sample] = snp_allelecount_LinkedGermline_df[closest_germline, sample]
+          refwellcount_germlines[sample] = ref_allelecount_LinkedGermline_df[closest_germline, sample]
+        }
+        
+      }else  if(SNPmode=="Best")
+      {
+        snpwellcount_germlines=  vector("numeric",length=length(tumoursamples))
+        refwellcount_germlines = vector("numeric",length=length(tumoursamples))
+        
+        names(snpwellcount_germlines) = tumoursamples
+        names(refwellcount_germlines) = tumoursamples
+        
+        
+        #For the Linked germline mutations
+        major_cn_sample_LinkedGermline_df = major_copynumber_df[linkedGermlines_list,tumoursamples,drop=F ]
+        snp_allelecount_LinkedGermline_df= data.matrix(snp_allelecount_df[linkedGermlines_list,tumoursamples, drop=F])
+        ref_allelecount_LinkedGermline_df= data.matrix(ref_allelecount_df[linkedGermlines_list,tumoursamples, drop=F])
+        #To fix a bug when only one germline, 
+        snp_allelecount_LinkedGermline_df=as.data.frame(snp_allelecount_LinkedGermline_df)
+        ref_allelecount_LinkedGermline_df=as.data.frame(ref_allelecount_LinkedGermline_df)
+        
+        
+        for(sample in tumoursamples)
+        {
+          
+          selectedlinkedGermlines_list = rownames(major_cn_sample_LinkedGermline_df[!is.na(major_cn_sample_LinkedGermline_df[,sample]) ,sample,drop=F])
+          selectedlinkedGermlines_list = intersect(selectedlinkedGermlines_list,rownames(snp_allelecount_LinkedGermline_df[!is.na(snp_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
+          selectedlinkedGermlines_list =  intersect(selectedlinkedGermlines_list,rownames(ref_allelecount_LinkedGermline_df[!is.na(ref_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
+          
+          #Compute the absolute difference between the allele count SNV  Vs SNP
+          SNP_alleleCount= snp_allelecount_df[selectedlinkedGermlines_list,sample, drop=F]+ref_allelecount_df[selectedlinkedGermlines_list,sample, drop=F]
+          SNV_alleleCount= snp_allelecount_df[mut,sample] + ref_allelecount_df[mut,sample]
+          absdiff_alleleCount= abs(SNP_alleleCount - SNV_alleleCount)
+          colnames(absdiff_alleleCount)="AbsDiff"
+          best_germline = rownames(absdiff_alleleCount[absdiff_alleleCount$AbsDiff== min(absdiff_alleleCount$AbsDiff, na.rm=T),"AbsDiff",drop=F])
+          
+          
+          if(length(best_germline)==0)
+            next
+          
+          #This is temporarly, we need to set second criterias for cases where we have multiple best germline
+          if(length(best_germline)>1){
+            best_germline=best_germline[1]
+          }
+          
+          #retrieve its allele counts
+          snpwellcount_germlines[sample] = snp_allelecount_LinkedGermline_df[best_germline, sample]
+          refwellcount_germlines[sample] = ref_allelecount_LinkedGermline_df[best_germline, sample]
+        }
+        
+      }else{ #mode_locus=SNVOnly
+        snpwellcount_germlines=NA
+        refwellcount_germlines=NA
+      }
+      
+      
+      # wellfraction_germlines=snp_allelecount_df[linkedGermlines_list,cifs:nbcolumns_wellfraction]
+      
+      ##### Preparing the input for the formulw
+      
+      ##Allele Counts
+      lambda_somatic=snpwellcount_somatic[mut, tumoursamples,drop=F] # Somatic variant counts 
+      mu_somatic=refwellcount_somatic[mut, tumoursamples,drop=F] # Somatic reference counts 
+      lambda_LinkedGermline<-snpwellcount_germlines #  Germline variant counts 
+      mu_LinkedGermline<- refwellcount_germlines # Germline reference counts 
+      
+      ###Copy number profile (simply the one of the somatic mutation locus)
+      if(!is.null(cnv_fraction)) {
+        phi_cn= unlist(phi_cn_sample_somatic)
+      }else{
+        phi_cn=NULL
+      }
+      major_cn= unlist(major_cn_sample_somatic)
+      minor_cn = unlist(minor_cn_sample_somatic)
+      
+      #Summarising the inputs
+      # stop(30)
+      Trace=F
+      if(Trace ){
+        cat("\n\n The inputs are : ")
+        cat("\n\t lambda_somatic :\n");print( lambda_somatic)
+        cat("\n\t mu_somatic  :\n");print(  mu_somatic )
+        cat("\n\t  lambda_LinkedGermline :\n");print(lambda_LinkedGermline )
+        #stop(20)
+        cat("\n\t  mu_LinkedGermline :\n");print(mu_LinkedGermline  )
+        if(!is.null(cnv_fraction)) {cat("\n\t  phi_cn :\n");print( phi_cn )}
+        cat("\n\t  major_cn :\n");print( major_cn )
+        cat("\n\t minor_cn  :\n");print( minor_cn  )
+      }
+      
+      # stop(10)
+      ###Calling the prevalence quantification
+     # if(detail)
+       # detail=2
+      
+      
+      Trace=F
+      prev_somatic=getPrevalence(lambda_somatic,mu_somatic,major_cn,minor_cn, lambda_LinkedGermline , mu_LinkedGermline,  detail ,mode_locus,Trace,SameTumour,SomaticCountAdjust)
+      
+      
+      
+      if (detail!=1)
+        {
+        masterprevalence[mut,names(prev_somatic)] = prev_somatic
+        }else{
+        
+        
+        for(sample in tumoursamples)
+        {
+          prevalence=prev_somatic[[sample]]  
+          if(is.na(prevalence)){
+            masterprevalence[mut,paste(sample,"Prevalence",sep="_")] = NA
+            next()
+          }
+
+          
+          masterprevalence[mut,paste(sample,"Prevalence",sep="_")] = prevalence$Prevalence
+          masterprevalence[mut,paste(sample,"Context",sep="_")] = prevalence$Context
+          masterprevalence[mut,paste(sample,"Germ",sep="_")] = prevalence$DetailedPrevalence["Germ"]
+          masterprevalence[mut,paste(sample,"Alt",sep="_")] = prevalence$DetailedPrevalence["Alt"]
+          masterprevalence[mut,paste(sample,"Both",sep="_")] = prevalence$DetailedPrevalence["Both"]
+          masterprevalence[mut,paste(sample,"ResidualNorm",sep="_")] = prevalence$ResidualNorm
+          masterprevalence[mut,paste(sample,"InputValues",sep="_")] = prevalence$InputValues
+          
+          
+        }
+        
+        
+      }
+      
+      
+      
+    }
+    
+ 
+  masterprevalence
+  
+  }
+
+
+
+
+
+
+#' Somatic mutations cellular prevalence on a single sample.
+#' 
+#' This is a generic function to compute the cellular prevalence of somatic mutations in
+#'  cancer.  The function applies the model to a range of mutations located at a given genomic region or at the whole genome scale. The model computes the prevalence of a somatic
+#'   mutation relatively to close and eventually phased germline mutations. It uses three sources
+#'    of information as input : The allelic counts, the phasing information and the 
+#'    copy number alteration.  Multiple tumor samples can be provided for the prevalence computation.
+#' 
+#' @param input_df A data frame containing for each mutations :
+#' \describe{
+#'        \item{lambda_S}{Alelle counts supporting the SNV}
+#'        \item{mu_S}{Alelle counts supporting the reference at the SNV locus}
+#'        \item{major_cn}{Major copy number at the SNV locus}
+#'        \item{minor_cn}{Minor copy number at the SNV locus}
+#'        \item{lambda_G}{Alelle counts supporting the SNP}
+#'        \item{mu_G}{Alelle counts supporting the reference at the SNP}
+#'      }
+#' @param nbFirstColumns Number of first columns in snp_allelecount_df to reproduce in
+#'  the output dataframe e.g: Chrom, Pos, Vartype. Columns from  nbFirstColumns +1 to the last column should contains the information needed for the prevalence computation at each tumour sample
+#' @param region The region of the genome to consider for the prevalence computation  in the format chrom:start-end 
+#' e.g "chr22:179800-98767 
+#' @param mode The mode under which the prevalence is computed  (default : PhasedSNP , alternatives methods  are FlankingSNP, OptimalSNP,and SNVOnly).  Can also be provided as a numeric 0=SNVOnly, 1= PhasedSNP, 2=FlankingSNP and 3 = OptimalSNP
+#' #@param formula The formula used to compute the prevalence. can be either "matrix" for the linear equations or "General" for the exact allele count cases. Default : Matrix
+#' @param detail when set to TRUE, a detailed output is generated containing, the context and the detailed prevalence for each group of cells (germline cells, cells affected by one of the two genomic alterations (SNV or CNV) but not both, cells affected by  by both copynumber alteration and SNV ). Default : TRUE.
+#' @param SomaticCountAdjust when set to true, lambda_S and mu_S might be adjusted if necessary so that they meet the rules lambda_S <= lambda_G. mu_S >= mu_G and lambda_S + mu_S = lambda_G + mu_G. Not used if mode=SNVOnly,  Default = FALSE 
+#' @return A data frame containing :
+#'  \describe{
+#'        \item{}{Column 1 to NbFirstcolumn of the input data frame snp_allelecount_df. 
+#'        This will generally include the chromosome and the position of the mutation plus
+#'        any other columns to report in the prevalence dataframe (e.g REF, ALL, ...) }
+#'         \item{}{and the following information}
+#'   \describe{
+#'        \item{Prev}{The Cellular Prevalence of the mutation}
+#'        \item{Germ}{The proportion of cells with a normal genotype}
+#'        \item{Alt}{The proportion of cells with only the CNA if the context C=C1 or with only the SNV if the context C=C2}
+#'        \item{Both}{The proportion of cells with both the SNV and the SCNA}
+#'        \item{Context}{Context at the mutation. If C1 then the SNV occured after the SCNA, if C=c2 then the SNV occured before the SCNA}
+#'        \item{residual}{Residual after limSolveapproximation.}
+#'      }
+#'      }
+#'      
+#' @examples
+#' 
+#' #Example 1: 
+#' 
+#' input_file=system.file("extdata","phylogeny1_d300_n80.tsv", package = "OncoPhase")
+#' input_df<-read.table(input_file,header=T)
+#' rownames(input_df) = input_df$mutation_id
+#' colnames(input_df) = c("mut_id", "lambda_S","mu_S","major_cn","minor_cn","lambda_G","mu_G")
+#' print(input_df)
+#' #  mut_id lambda_S mu_S major_cn minor_cn lambda_G mu_G
+#' #a      a      151  152        1        1      151  135
+#' #b      b      123  176        1        1      161  150
+#' #c      c       94  209        2        1      176  134
+#' #d      d       23  283        1        1      155  144
+#' #e      e       60  228        2        0      174  125
+#' 
+#' prevalence_df=getPrevalenceSingleSample(input_df,nbFirstColumns = 1)
+#' 
+#' print(prevalence_df)
+#'   mut_id   Prev   Germ    Alt   Both Residual Context
+#' #  a      a 0.9967 0.0017 0.0017 0.9967  3.1e-03      C1
+#' #  b      b 0.8230 0.0890 0.0890 0.8230  1.3e-03      C1
+#' #  c      c 0.4010 0.6000 0.0910 0.3100  3.9e-33      C2
+#' #  d      d 0.1500 0.4200 0.4200 0.1500  1.4e-03      C1
+#' #  e      e 0.2490 0.7500 0.0890 0.1600  5.1e-31      C2
+#' 
+#' 
+#'@seealso \code{\link{getPrevalence}}
+#' @export
+getPrevalenceSingleSample<-function(input_df,mode="PhasedSNP",NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=0, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip" ,SomaticCountAdjust=0)
+{
+  
+  # Extract the somatic mutations 
+  
+  
+  compulsory_columns=c("lambda_S","mu_S","major_cn","minor_cn")
+  
+  if (length(setdiff(compulsory_columns,colnames(input_df)))>0){
+    stop(" The allele count master matrices should have at least the following headers
+         columns : ")
+    print(compulsory_columns)
   }
   
   
@@ -38,516 +581,45 @@ getPrevalence_Matrice<-function( snp_allelecount_df, ref_allelecount_df, major_c
   }
   
   
-  
-  #We then  retrieve for each somatic mutation the list of germline mutations to consider for the prevalence computation
-  # a) if PhasedSNP mode, then the considered germline are the germline mutations phased to the somatic mutation and located within the same locus
-  # b) if FlankingSNP mode then the considered germline are the close germlines located within LocusRadius distance from the somatic mutation.
-  #c) if OptimalSNP mode tho columns are provided, the first for the phased germline, and if only there is not phasing information for this mutation, then the second column contains the close germlines located within LocusRadius
-  
-
- # LinkedGermlineMutation=getLocusGermlineMutations(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode,  LocusRadius)
-  
-  
-
-  #Preparing the data frame to contains the somatic mutations cellular prevalences.
-  masterprevalence<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=nbFirstColumns + length(tumoursamples))
-  masterprevalence<-as.data.frame(masterprevalence)
-  colnames(masterprevalence) <- c(colnames(somatic_snp_allelecount_df[1:nbFirstColumns]),tumoursamples)
-  rownames(masterprevalence) <- rownames(somatic_snp_allelecount_df)
-  masterprevalence[1:nbFirstColumns] = somatic_snp_allelecount_df[1:nbFirstColumns]
-  
- # masterprevalence=masterprevalence[listover_estimated,]
-#  mut=""
-  for (imut in 1:nrow(masterprevalence))
-  #for (imut in 1:5)
-  {
-    
-   # if(mut=="chr22_22572873_A_T")
-   
-    #Mutation name and mutation position
-    mut <- rownames(masterprevalence[imut,]); 
-    mut_pos=as.numeric(masterprevalence[imut,"End"])
-    
-   #  if(mut!=listunder_estimated[4])
-   #   next
-    
-
-   #   cat("\n mut is ", mut, "\n ********* \n ******** ")
-   # if (imut!=9)
-  #   next
-    
-  # Trace = (mut %in% listover_estimated)
-  #  if(Trace)
-  #    cat("\n\n\n Mutation", mut, "\n ======================\n====================\n\n")
-    
-   
-   
-    #For each mutation, we need to extract one value or one vector (if multiple samples)  of :
-    # - lambda_G and mu_G : Respectively Variant and reference coverage/count of the phased/nearby Germline Mutations
-    # - lambda_S and mu_S : Respectively Variant and reference coverage/count of the somatic mutations
-    # - major_cn and minor_cn : major and minor copy number at the locus of the somatic mutations 
-    # - CNV_fraction : If provided, fraction of cells affected by the CNV
-    # - NormalCell_fraction : If provided, fraction of normal cell contamination.
-    
-    
-    
-    mode_locus=mode  # Mode to consider while computing the mutation prevalence and retrievning the germline on the same locus with the mutation
-    if(mode=="OptimalSNP") # If Mode = Optimal, then we  willtry first PhasedSNP, latter if no germline found, we  will try FlankingSNP
-      mode_locus="PhasedSNP"
-    
-    
-    ############################
-    #####Source of information 1: The list of linked germline mutations 
-    ##############
-    
-    if(mode!="SNVOnly")
-      {
-
-      linked_germline_df=getLocusGermlineMutations(somatic_snp_allelecount_df[mut,], snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode_locus,  LocusRadius)
-      linked_germline=as.character(linked_germline_df[mut,"LinkedGermlines"])
-
-      
-      if(is.null(linked_germline)|| is.na(linked_germline))
-        if((mode_locus=="PhasedSNP")&&(mode=="OptimalSNP")){
-          mode_locus="FlankingSNP"
-          linked_germline_df=getLocusGermlineMutations(somatic_snp_allelecount_df[mut,], snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode_locus,  LocusRadius)
-          linked_germline=as.character(linked_germline_df[mut,"LinkedGermlines"])
-          
-        }
-      
-      
-#       cat("\n\n Linked for mutation ", mut,"\n")
-#       print(linked_germline)
-#       cat("\n\n mode locus ", mut,"\n")
-#       print(mode_locus)
-      
-      if(is.null(linked_germline)|| is.na(linked_germline))
-          next
-      
-
-      
-      
-      #List of germline mutations linked to the considered somatic mutation
-      linkedGermlines_list<-unlist(strsplit(linked_germline,":"))
-      if (length(unlist(linkedGermlines_list))==0)
-        next
-      
-      
-    }
-
-    
-    ############################
-    #####Source of information 2: The Copy Number 
-    ##############
-    
-    #For the somatic mutation
-    if(!is.null(cnv_fraction)) phi_cn_sample_somatic = cnv_fraction[mut,tumoursamples,drop=F]
-    if(!is.null(NormalcellContamination_df))  NC_sample_somatic = NormalCellContamination_df[mut,tumoursamples,drop=F]
-    major_cn_sample_somatic = major_copynumber_df[mut,tumoursamples, drop=F]
-    minor_cn_sample_somatic = minor_copynumber_df[mut,tumoursamples,drop=F]
-    NormalContamination_sample_somatic = minor_copynumber_df[mut,tumoursamples,drop=F]
-    
-    ############################
-    #####Source of information 3: The Allele Count 
-    
-    #Somatic
-    #wellfraction_somatic =snp_allelecount_df[mut,cifs:nbcolumns_wellfraction]
-    snpwellcount_somatic =  data.matrix(snp_allelecount_df[mut,tumoursamples,drop=F])
-    refwellcount_somatic = data.matrix(ref_allelecount_df[mut,tumoursamples,drop=F])
-    
-    #Germline
-    # a) if mode_locus=PhasedSNP, according to the MLE (EM) estimation, at each sample, we consider the average counts of the linked germline.
-    # b) if mode_locus=FlankingSNP, at each sample, we consider the closest germline mutation having all the required information (Alleles Count and Copy number Information)
-    
-    if(mode_locus=="PhasedSNP")
-    {
-      snpwellcount_germlines=  colMeans(data.matrix(snp_allelecount_df[linkedGermlines_list,tumoursamples, drop=F]), 
-                                        na.rm=T)
-      refwellcount_germlines =colMeans( data.matrix(ref_allelecount_df[linkedGermlines_list,tumoursamples, drop=F]), 
-                                        na.rm=T)
-      
-    }else  if(mode_locus=="FlankingSNP")
-    {
-      snpwellcount_germlines=  vector("numeric",length=length(tumoursamples))
-      refwellcount_germlines = vector("numeric",length=length(tumoursamples))
-      
-      names(snpwellcount_germlines) = tumoursamples
-      names(refwellcount_germlines) = tumoursamples
-      
-      
-      #For the Linked germline mutations
-      major_cn_sample_LinkedGermline_df = major_copynumber_df[linkedGermlines_list,tumoursamples,drop=F ]
-      snp_allelecount_LinkedGermline_df= data.matrix(snp_allelecount_df[linkedGermlines_list,tumoursamples, drop=F])
-      ref_allelecount_LinkedGermline_df= data.matrix(ref_allelecount_df[linkedGermlines_list,tumoursamples, drop=F])
-      #To fix a bug when only one germline, 
-      snp_allelecount_LinkedGermline_df=as.data.frame(snp_allelecount_LinkedGermline_df)
-      ref_allelecount_LinkedGermline_df=as.data.frame(ref_allelecount_LinkedGermline_df)
-      
-      
-      for(sample in tumoursamples)
-      {
-
-        selectedlinkedGermlines_list = rownames(major_cn_sample_LinkedGermline_df[!is.na(major_cn_sample_LinkedGermline_df[,sample]) ,sample,drop=F])
-        selectedlinkedGermlines_list = intersect(selectedlinkedGermlines_list,rownames(snp_allelecount_LinkedGermline_df[!is.na(snp_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
-        selectedlinkedGermlines_list =  intersect(selectedlinkedGermlines_list,rownames(ref_allelecount_LinkedGermline_df[!is.na(ref_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
-        
-        #Compute the distance to the somatic mutation
-        distance_germlines= snp_allelecount_df[selectedlinkedGermlines_list,"End", drop=F]
-        distance_germlines["distance"] = abs(as.numeric(distance_germlines$End) - mut_pos)
-        #select the closest germline
-        closest_germline = rownames(distance_germlines[distance_germlines$distance== min(distance_germlines$distance, na.rm=T), ])
-        
-        if(length(closest_germline)==0)
-          next
-        
-        #retrieve its allele counts
-        snpwellcount_germlines[sample] = snp_allelecount_LinkedGermline_df[closest_germline, sample]
-        refwellcount_germlines[sample] = ref_allelecount_LinkedGermline_df[closest_germline, sample]
-      }
-      
-    }else{ #mode_locus=SNVOnly
-      snpwellcount_germlines=NA
-      refwellcount_germlines=NA
-    }
-    
-    
-    # wellfraction_germlines=snp_allelecount_df[linkedGermlines_list,cifs:nbcolumns_wellfraction]
-    
-    ##### Preparing the input for the formulw
-    
-    ##Allele Counts
-    lambda_somatic=snpwellcount_somatic[mut, tumoursamples,drop=F] # Somatic variant counts 
-    mu_somatic=refwellcount_somatic[mut, tumoursamples,drop=F] # Somatic reference counts 
-    lambda_LinkedGermline<-snpwellcount_germlines #  Germline variant counts 
-    mu_LinkedGermline<- refwellcount_germlines # Germline reference counts 
-    
-    #Normalising the somatic count to the germline count, 
-    #germline and somatic are set to have the same total count of Alleles
-    #Total_allele_count=lambda_LinkedGermline + mu_LinkedGermline
-    #lambda_somatic = (lambda_somatic/(lambda_somatic+mu_somatic)) * Total_allele_count
-    #mu_somatic= Total_allele_count - lambda_somatic
-    
-    ###Copy number profile (simply the one of the somatic mutation locus)
-    if(!is.null(cnv_fraction)) {
-      phi_cn= unlist(phi_cn_sample_somatic)
-    }else{
-      phi_cn=NULL
-    }
-    major_cn= unlist(major_cn_sample_somatic)
-    minor_cn = unlist(minor_cn_sample_somatic)
-    
-    #Summarising the inputs
-    # stop(30)
-    #Trace=F
-    if(Trace ){
-      cat("\n\n The inputs are : ")
-      cat("\n\t lambda_somatic :\n");print( lambda_somatic)
-      cat("\n\t mu_somatic  :\n");print(  mu_somatic )
-      cat("\n\t  lambda_LinkedGermline :\n");print(lambda_LinkedGermline )
-      #stop(20)
-      cat("\n\t  mu_LinkedGermline :\n");print(mu_LinkedGermline  )
-      if(!is.null(cnv_fraction)) {cat("\n\t  phi_cn :\n");print( phi_cn )}
-      cat("\n\t  major_cn :\n");print( major_cn )
-      cat("\n\t minor_cn  :\n");print( minor_cn  )
-    }
-    
-    # stop(10)
-    ###Calling the prevalence quantification
-    if(detail)
-      detail=2
-
-    
-    prev_somatic=getPrevalence(lambda_somatic,mu_somatic,major_cn,minor_cn, lambda_LinkedGermline , mu_LinkedGermline,  detail,mode_locus,Trace,SameTumour,SomaticCountAdjust)
-    
-  #  print(prev_somatic)
-   # cat("\n")
-    masterprevalence[mut,names(prev_somatic)]
-   
-
-  
-    masterprevalence[mut,names(prev_somatic)] = prev_somatic
+  masterprevalence=as.data.frame(matrix(nrow=nrow(input_df), ncol=nbFirstColumns+6))
+  rownames(masterprevalence) = rownames(input_df)
+  if(nbFirstColumns>0){
+    masterprevalence[1:nbFirstColumns] = input_df[1:nbFirstColumns]
+    colnames(masterprevalence) = c(colnames(input_df[1:nbFirstColumns]),"Prev", "Germ","Alt","Both","Residual","Context")
+  }else{
+    colnames(masterprevalence) = c("Prev", "Germ","Alt","Both","Residual","Context")
   }
+  
+  
+  for(imut in 1: nrow(input_df))
+  {
+    lambda_S = input_df[imut,"lambda_S"]
+    mu_S = input_df[imut,"mu_S"]
+    minor_cn=input_df[imut,"minor_cn"]
+    major_cn=input_df[imut,"major_cn"]
+    lambda_G=input_df[imut,"lambda_G"]
+    mu_G=input_df[imut,"mu_G"]
+    
+    prevalence= getPrevalence(lambda_S, mu_S, major_cn, minor_cn, lambda_G, mu_G, detail=T, mode=mode ,SomaticCountAdjust=SomaticCountAdjust)
+    
+    if(is.na(prevalence[[1]]))
+      next
+    
+    masterprevalence[imut,"Prev"] = prevalence[[1]]$Prevalence
+    masterprevalence[imut,"Germ"] = prevalence[[1]]$DetailedPrevalence["Germ"]
+    masterprevalence[imut,"Alt"] = prevalence[[1]]$DetailedPrevalence["Alt"]
+    masterprevalence[imut,"Both"] = prevalence[[1]]$DetailedPrevalence["Both"]
+    masterprevalence[imut,"Context"] = prevalence[[1]]$Context
+    masterprevalence[imut,"Residual"] = prevalence[[1]]$ResidualNorm
+    masterprevalence[imut,"InputValues"] = prevalence[[1]]$InputValues
+  }
+  
   
   
   masterprevalence
+  
 }
 
-
-
-#' @export
-getPrevalence_Matrice2<-function( snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE, LocusRadius = 10000,NoPrevalence.action="Skip",Trace=FALSE,SameTumour=TRUE,SomaticCountAdjust=F,SampleToRetrieveInputs="Primary")
-{
-  
-  
-  #Extraction of the list of somatic mutations the cellular prevalence will be computed.
-  somatic_snp_allelecount_df = snp_allelecount_df[snp_allelecount_df$IsGermline==0, ]
-  # If a region is provided, a restriction is performed on the given region
-  if(!is.null(region)){
-    region_parts= unlist(strsplit(region,":"))
-    
-    chrom = region_parts[1]
-    startPosition = 1
-    endPosition = hg19_dfsize[chrom]
-    
-    somatic_snp_allelecount_df = somatic_snp_allelecount_df[somatic_snp_allelecount_df$Chrom == chrom , ]
-    
-    if(length(region_parts)>1){
-      coordinates = unlist(strsplit(region_parts[2],"-"))
-      startPosition = as.numeric(coordinates[1])
-      endPosition = as.numeric(coordinates[2])
-      somatic_snp_allelecount_df = somatic_snp_allelecount_df[somatic_snp_allelecount_df$Chrom == chrom & somatic_snp_allelecount_df$Start >= startPosition & somatic_snp_allelecount_df$End <= endPosition,]
-    }
-  }
-  
-  
-  #set the mode if numeric, 0=SNVOnly, 1 = PhasedSNP, 2=FlankingSNP, 3 = OptimalSNP
-  numeric_mode=c("SNVOnly", "PhasedSNP","FlankingSNP","OptimalSNP")
-  if(is.numeric(mode))
-  {
-    if(mode %in% c(0,1,2,3))
-    {
-      mode = numeric_mode[mode +1 ]
-    }else{
-      stop("\n\n Mode parameter, if numeric,  should be either 0, 1,  2 or 3")
-    }
-  }
-  
-  
-  
-  #We then  retrieve for each somatic mutation the list of germline mutations to consider for the prevalence computation
-  # a) if PhasedSNP mode, then the considered germline are the germline mutations phased to the somatic mutation and located within the same locus
-  # b) if FlankingSNP mode then the considered germline are the close germlines located within LocusRadius distance from the somatic mutation.
-  #c) if OptimalSNP mode tho columns are provided, the first for the phased germline, and if only there is not phasing information for this mutation, then the second column contains the close germlines located within LocusRadius
-  
-  
-  # LinkedGermlineMutation=getLocusGermlineMutations(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode,  LocusRadius)
-  
-  
-  
-  #Preparing the data frame to contains the somatic mutations cellular prevalences.
-  masterprevalence<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=nbFirstColumns + length(tumoursamples))
-  masterprevalence<-as.data.frame(masterprevalence)
-  colnames(masterprevalence) <- c(colnames(somatic_snp_allelecount_df[1:nbFirstColumns]),tumoursamples)
-  rownames(masterprevalence) <- rownames(somatic_snp_allelecount_df)
-  masterprevalence[1:nbFirstColumns] = somatic_snp_allelecount_df[1:nbFirstColumns]
-  
-  # masterprevalence=masterprevalence[listover_estimated,]
-  #  mut=""
-  for (imut in 1:nrow(masterprevalence))
-    #for (imut in 1:5)
-  {
-    
-    # if(mut=="chr22_22572873_A_T")
-    
-    #Mutation name and mutation position
-    mut <- rownames(masterprevalence[imut,]); 
-    mut_pos=as.numeric(masterprevalence[imut,"End"])
-    
-    #  if(mut!=listunder_estimated[4])
-    #   next
-    
-    
-    #   cat("\n mut is ", mut, "\n ********* \n ******** ")
-    # if (imut!=9)
-    #   next
-    
-    # Trace = (mut %in% listover_estimated)
-    #  if(Trace)
-    #    cat("\n\n\n Mutation", mut, "\n ======================\n====================\n\n")
-    
-    
-    
-    #For each mutation, we need to extract one value or one vector (if multiple samples)  of :
-    # - lambda_G and mu_G : Respectively Variant and reference coverage/count of the phased/nearby Germline Mutations
-    # - lambda_S and mu_S : Respectively Variant and reference coverage/count of the somatic mutations
-    # - major_cn and minor_cn : major and minor copy number at the locus of the somatic mutations 
-    # - CNV_fraction : If provided, fraction of cells affected by the CNV
-    # - NormalCell_fraction : If provided, fraction of normal cell contamination.
-    
-    
-    
-    mode_locus=mode  # Mode to consider while computing the mutation prevalence and retrievning the germline on the same locus with the mutation
-    if(mode=="OptimalSNP") # If Mode = Optimal, then we  willtry first PhasedSNP, latter if no germline found, we  will try FlankingSNP
-      mode_locus="PhasedSNP"
-    
-    
-    ############################
-    #####Source of information 1: The list of linked germline mutations 
-    ##############
-    
-    if(mode!="SNVOnly")
-    {
-      
-      linked_germline_df=getLocusGermlineMutations(somatic_snp_allelecount_df[mut,], snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode_locus,  LocusRadius)
-      linked_germline=as.character(linked_germline_df[mut,"LinkedGermlines"])
-      
-      
-      if(is.null(linked_germline)|| is.na(linked_germline))
-        if((mode_locus=="PhasedSNP")&&(mode=="OptimalSNP")){
-          mode_locus="FlankingSNP"
-          linked_germline_df=getLocusGermlineMutations(somatic_snp_allelecount_df[mut,], snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode_locus,  LocusRadius)
-          linked_germline=as.character(linked_germline_df[mut,"LinkedGermlines"])
-          
-        }
-      
-      
-      #       cat("\n\n Linked for mutation ", mut,"\n")
-      #       print(linked_germline)
-      #       cat("\n\n mode locus ", mut,"\n")
-      #       print(mode_locus)
-      
-      if(is.null(linked_germline)|| is.na(linked_germline))
-        next
-      
-      
-      
-      
-      #List of germline mutations linked to the considered somatic mutation
-      linkedGermlines_list<-unlist(strsplit(linked_germline,":"))
-      if (length(unlist(linkedGermlines_list))==0)
-        next
-      
-      
-    }
-    
-    
-    ############################
-    #####Source of information 2: The Copy Number 
-    ##############
-    
-    #For the somatic mutation
-    if(!is.null(cnv_fraction)) phi_cn_sample_somatic = cnv_fraction[mut,tumoursamples,drop=F]
-    if(!is.null(NormalcellContamination_df))  NC_sample_somatic = NormalCellContamination_df[mut,tumoursamples,drop=F]
-    major_cn_sample_somatic = major_copynumber_df[mut,tumoursamples, drop=F]
-    minor_cn_sample_somatic = minor_copynumber_df[mut,tumoursamples,drop=F]
-    NormalContamination_sample_somatic = minor_copynumber_df[mut,tumoursamples,drop=F]
-    
-    ############################
-    #####Source of information 3: The Allele Count 
-    
-    #Somatic
-    #wellfraction_somatic =snp_allelecount_df[mut,cifs:nbcolumns_wellfraction]
-    snpwellcount_somatic =  data.matrix(snp_allelecount_df[mut,tumoursamples,drop=F])
-    refwellcount_somatic = data.matrix(ref_allelecount_df[mut,tumoursamples,drop=F])
-    
-    #Germline
-    # a) if mode_locus=PhasedSNP, according to the MLE (EM) estimation, at each sample, we consider the average counts of the linked germline.
-    # b) if mode_locus=FlankingSNP, at each sample, we consider the closest germline mutation having all the required information (Alleles Count and Copy number Information)
-    
-    if(mode_locus=="PhasedSNP")
-    {
-      snpwellcount_germlines=  colMeans(data.matrix(snp_allelecount_df[linkedGermlines_list,tumoursamples, drop=F]), 
-                                        na.rm=T)
-      refwellcount_germlines =colMeans( data.matrix(ref_allelecount_df[linkedGermlines_list,tumoursamples, drop=F]), 
-                                        na.rm=T)
-      
-    }else  if(mode_locus=="FlankingSNP")
-    {
-      snpwellcount_germlines=  vector("numeric",length=length(tumoursamples))
-      refwellcount_germlines = vector("numeric",length=length(tumoursamples))
-      
-      names(snpwellcount_germlines) = tumoursamples
-      names(refwellcount_germlines) = tumoursamples
-      
-      
-      #For the Linked germline mutations
-      major_cn_sample_LinkedGermline_df = major_copynumber_df[linkedGermlines_list,tumoursamples,drop=F ]
-      snp_allelecount_LinkedGermline_df= data.matrix(snp_allelecount_df[linkedGermlines_list,tumoursamples, drop=F])
-      ref_allelecount_LinkedGermline_df= data.matrix(ref_allelecount_df[linkedGermlines_list,tumoursamples, drop=F])
-      #To fix a bug when only one germline, 
-      snp_allelecount_LinkedGermline_df=as.data.frame(snp_allelecount_LinkedGermline_df)
-      ref_allelecount_LinkedGermline_df=as.data.frame(ref_allelecount_LinkedGermline_df)
-      
-      
-      for(sample in tumoursamples)
-      {
-        
-        selectedlinkedGermlines_list = rownames(major_cn_sample_LinkedGermline_df[!is.na(major_cn_sample_LinkedGermline_df[,sample]) ,sample,drop=F])
-        selectedlinkedGermlines_list = intersect(selectedlinkedGermlines_list,rownames(snp_allelecount_LinkedGermline_df[!is.na(snp_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
-        selectedlinkedGermlines_list =  intersect(selectedlinkedGermlines_list,rownames(ref_allelecount_LinkedGermline_df[!is.na(ref_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
-        
-        #Compute the distance to the somatic mutation
-        distance_germlines= snp_allelecount_df[selectedlinkedGermlines_list,"End", drop=F]
-        distance_germlines["distance"] = abs(as.numeric(distance_germlines$End) - mut_pos)
-        #select the closest germline
-        closest_germline = rownames(distance_germlines[distance_germlines$distance== min(distance_germlines$distance, na.rm=T), ])
-        
-        if(length(closest_germline)==0)
-          next
-        
-        #retrieve its allele counts
-        snpwellcount_germlines[sample] = snp_allelecount_LinkedGermline_df[closest_germline, sample]
-        refwellcount_germlines[sample] = ref_allelecount_LinkedGermline_df[closest_germline, sample]
-      }
-      
-    }else{ #mode_locus=SNVOnly
-      snpwellcount_germlines=NA
-      refwellcount_germlines=NA
-    }
-    
-    
-    # wellfraction_germlines=snp_allelecount_df[linkedGermlines_list,cifs:nbcolumns_wellfraction]
-    
-    ##### Preparing the input for the formulw
-    
-    ##Allele Counts
-    lambda_somatic=snpwellcount_somatic[mut, tumoursamples,drop=F] # Somatic variant counts 
-    mu_somatic=refwellcount_somatic[mut, tumoursamples,drop=F] # Somatic reference counts 
-    lambda_LinkedGermline<-snpwellcount_germlines #  Germline variant counts 
-    mu_LinkedGermline<- refwellcount_germlines # Germline reference counts 
-    
-    #Normalising the somatic count to the germline count, 
-    #germline and somatic are set to have the same total count of Alleles
-    #Total_allele_count=lambda_LinkedGermline + mu_LinkedGermline
-    #lambda_somatic = (lambda_somatic/(lambda_somatic+mu_somatic)) * Total_allele_count
-    #mu_somatic= Total_allele_count - lambda_somatic
-    
-    ###Copy number profile (simply the one of the somatic mutation locus)
-    if(!is.null(cnv_fraction)) {
-      phi_cn= unlist(phi_cn_sample_somatic)
-    }else{
-      phi_cn=NULL
-    }
-    major_cn= unlist(major_cn_sample_somatic)
-    minor_cn = unlist(minor_cn_sample_somatic)
-    
-    #Summarising the inputs
-    # stop(30)
-    #Trace=F
-    if(Trace ){
-      cat("\n\n The inputs are : ")
-      cat("\n\t lambda_somatic :\n");print( lambda_somatic)
-      cat("\n\t mu_somatic  :\n");print(  mu_somatic )
-      cat("\n\t  lambda_LinkedGermline :\n");print(lambda_LinkedGermline )
-      #stop(20)
-      cat("\n\t  mu_LinkedGermline :\n");print(mu_LinkedGermline  )
-      if(!is.null(cnv_fraction)) {cat("\n\t  phi_cn :\n");print( phi_cn )}
-      cat("\n\t  major_cn :\n");print( major_cn )
-      cat("\n\t minor_cn  :\n");print( minor_cn  )
-    }
-    
-    # stop(10)
-    ###Calling the prevalence quantification
-    if(detail)
-      detail=2
-    
-    
-    prev_somatic=getPrevalence(lambda_somatic,mu_somatic,major_cn,minor_cn, lambda_LinkedGermline , mu_LinkedGermline,  detail,mode_locus,Trace,SameTumour,SomaticCountAdjust)
-    
-    #  print(prev_somatic)
-    # cat("\n")
-    masterprevalence[mut,names(prev_somatic)]
-    
-    mysample=SampleToRetrieveInputs
-    input_to_retrieves = paste(lambda_somatic[mut,mysample],mu_somatic[mut,mysample],major_cn[mysample], minor_cn[mysample], lambda_LinkedGermline[mysample], mu_LinkedGermline[mysample], sep=":")
-    
-    masterprevalence[mut,names(prev_somatic)] = prev_somatic
-    masterprevalence[mut,"Input"] = input_to_retrieves
-  }
-  
-  
-  masterprevalence
-}
 
 
 
@@ -667,7 +739,8 @@ getPrevalence_Matrice2<-function( snp_allelecount_df, ref_allelecount_df, major_
 #' 
 #' @seealso \code{\link{getPrevalence}},  \code{\link{getPhasedSNPPrevalenceGeneral}},   \code{\link{getPrevalenceLinear}}, \code{\link{getPrevalenceSNVOnly}}                                                 
 #' @export
-getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NULL,  detail=0, mode="PhasedSNP",Trace=FALSE,SameTumour=TRUE,SomaticCountAdjust=FALSE ){
+getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NULL,  detail=0, mode="PhasedSNP",Trace=FALSE,SameTumour=TRUE,SomaticCountAdjust=0)
+  {
   
 
   N=length(lambda_S) # Number of samples
@@ -694,7 +767,7 @@ getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NUL
   
  
   if(mode=="PhasedSNP"){
-    prev_somatic=getPhasedSNPPrevalence( lambda_S,mu_S , major_cn,minor_cn, lambda_G , mu_G,detail,Trace=Trace,SomaticCountAdjust )
+    prev_somatic=getPhasedSNPPrevalence( lambda_S,mu_S , major_cn,minor_cn, lambda_G , mu_G,detail,Trace=Trace,SomaticCountAdjust)
   }else if(mode=="FlankingSNP"){
     prev_somatic=getFlankingSNPPrevalence( lambda_S,mu_S ,  major_cn,minor_cn,lambda_G , mu_G, detail,Trace=Trace,SameTumour,SomaticCountAdjust)
   }else if(mode=="SNVOnly"){
@@ -711,7 +784,7 @@ getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NUL
 }
 
 #' @export
-getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=0,Trace=FALSE,SomaticCountAdjust=FALSE )
+getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=0,Trace=FALSE,SomaticCountAdjust=0)
   {
     #if(length(lambda_G)>1)
     {
@@ -738,6 +811,7 @@ getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G
     }
   
 
+  #Initialisation of prev_S
   if(detail==1)
   { prev_S = list()
   }else{
@@ -776,13 +850,18 @@ getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G
      # print(prevalence)
       
       #  if detail, the context and  tree type of prevalence are collapsed else only the prevalence is outputed
-      if(detail==2){
-        prev_S[sample] = prevalence$CondensedPrevalence
-      } else if(detail==1){
-        prev_S[sample] =list(prevalence)
+      if(!is.na(prevalence)){
+        if(detail==2){
+          prev_S[sample] = prevalence$CondensedPrevalence
+        } else if(detail==1){
+          prev_S[sample] =list(prevalence)
+        }else{
+          prev_S[sample] =prevalence$Prevalence
+        }
       }else{
-        prev_S[sample] =prevalence$Prevalence
+        prev_S[sample] =NA
       }
+
     }
     
     if(Trace) {cat("\n\n\n Computed prevalences are  :\n")
@@ -795,7 +874,7 @@ getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G
   
 
 #' @export
-getFlankingSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=FALSE,Trace=False,SameTumour=TRUE,SomaticCountAdjust=FALSE)
+getFlankingSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=FALSE,Trace=False,SameTumour=TRUE,SomaticCountAdjust=0)
   {
   
   #For each case, we compute the prevalence twice. By considering the somatic to be phased to the germline SNP or phased with the alternative chromosome harboring the reference of the Germline. The latter is achieved just by 
@@ -901,13 +980,14 @@ getFlankingSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu
 
 
 #' @export
-getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G, mu_G, detail=FALSE,Trace=FALSE,SomaticCountAdjust=FALSE){
+getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G, mu_G, detail=FALSE,Trace=FALSE,SomaticCountAdjust=0)
+  {
 
   Prevalence=NA
   DetailedPrevvalence=NA
   
   
-  if(SomaticCountAdjust){
+  if(SomaticCountAdjust>0){
     
     if(Trace){
       cat("\n\n The input before adjustement :\n ")
@@ -919,59 +999,92 @@ getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_
     if(mu_S < mu_G)
       mu_S = mu_G
     
-    if(mu_S < qpois(0.001,mu_G + lambda_G - lambda_S))
-      mu_S=mu_G + lambda_G - lambda_S
+    if(SomaticCountAdjust==1){
+      if(mu_S < qpois(0.001,max(0,mu_G + lambda_G - lambda_S)))
+        mu_S=mu_G + lambda_G - lambda_S
+    }
+    
+    if(SomaticCountAdjust==2){
+        mu_S=mu_G + lambda_G - lambda_S
+    }
+    
+    if(SomaticCountAdjust==3){
+      if(mu_G < qpois(0.001,max(0,mu_S + lambda_S - lambda_G)))
+        mu_G=mu_S + lambda_S - lambda_G
+    }
+    
+    if(SomaticCountAdjust==4){
+      mu_G=mu_S + lambda_S - lambda_G
+    }
+    
+    if(SomaticCountAdjust==5){
+      if(mu_S < qpois(0.001,max(0,mu_G + lambda_G - lambda_S))){
+        mu_S=NA
+      }else if(mu_G < qpois(0.001,max(0,mu_S + lambda_S - lambda_G))){
+        mu_G=NA
+      }
+    }
+    
 
   }
   
-  
-  
-  
-  
-  #We compute the prevalence for the two contexts and we choose the one with the less residual
-  if(Trace) cat("\n\n\n Context : C1 (C=0)  SNV after CNA \n **********")
-  PrevalenceCond_C1 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C1",Trace)
-  if(Trace) cat("\n\n\n Context : C2 (C=1)  SNV before CNA \n **********")
-  PrevalenceCond_C2 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C2",Trace)
-  
-
-  
-  PrevalenceCond = PrevalenceCond_C1
-  context="C1"
-  if(as.numeric(PrevalenceCond_C2["residual"]) < as.numeric(PrevalenceCond_C1["residual"])){
-    PrevalenceCond = PrevalenceCond_C2
-    context="C2"
-  }
-  
-  
-  PrevalenceCond=as.numeric(format(PrevalenceCond,digits=2))
-  names(PrevalenceCond) = names(PrevalenceCond_C2)
-
-
-  
-  AllPrevalences=PrevalenceCond[1:3]
-  if(context=="C2"){
-    Prevalence=sum(PrevalenceCond["Alt"],PrevalenceCond["Both"],na.rm=T)
-  }
-  if(context=="C1"){
-    Prevalence=PrevalenceCond["Both"]
-  }
-  
-  residualNorm = PrevalenceCond["residual"]
-
-  condensedPrevalence=paste( context,Prevalence,paste(AllPrevalences,collapse="|"),residualNorm, sep=":")
-  
-  if(detail){
-    Prevalence_output = list(Context=context,Prevalence=Prevalence,DetailedPrevalence=AllPrevalences,ResidualNorm=residualNorm, CondensedPrevalence = condensedPrevalence)
+  if(is.na(mu_S) || is.na(mu_G)){
+    Prevalence_output=NA
   }else{
-    Prevalence_output = Prevalence
-  }
+    
+    
+    
+    #We compute the prevalence for the two contexts and we choose the one with the less residual
+    if(Trace) cat("\n\n\n Context : C1 (C=0)  SNV after CNA \n **********")
+    PrevalenceCond_C1 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C1",Trace)
+    if(Trace) cat("\n\n\n Context : C2 (C=1)  SNV before CNA \n **********")
+    PrevalenceCond_C2 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C2",Trace)
+    
+    
+    
+    PrevalenceCond = PrevalenceCond_C1
+    context="C1"
+    if(as.numeric(PrevalenceCond_C2["residual"]) < as.numeric(PrevalenceCond_C1["residual"])){
+      PrevalenceCond = PrevalenceCond_C2
+      context="C2"
+    }
+    
+    
+    PrevalenceCond=as.numeric(format(PrevalenceCond,digits=2))
+    names(PrevalenceCond) = names(PrevalenceCond_C2)
+    
+    
+    
+    AllPrevalences=PrevalenceCond[1:3]
+    if(context=="C2"){
+      Prevalence=sum(PrevalenceCond["Alt"],PrevalenceCond["Both"],na.rm=T)
+    }
+    if(context=="C1"){
+      Prevalence=PrevalenceCond["Both"]
+    }
+    
+    residualNorm = PrevalenceCond["residual"]
+    
+    condensedPrevalence=paste( context,Prevalence,paste(AllPrevalences,collapse="|"),residualNorm, sep=":")
+    
+    input_values = paste(lambda_S,mu_S,major_cn,minor_cn, lambda_G, mu_G,sep=":")
+    
+    if(detail){
+      Prevalence_output = list(Context=context,Prevalence=Prevalence,DetailedPrevalence=AllPrevalences,ResidualNorm=residualNorm, CondensedPrevalence = condensedPrevalence,InputValues=input_values)
+    }else{
+      Prevalence_output = Prevalence
+    }
+    
+    if(Trace) 
+    {
+      cat("\n\n\n\t\t ***** Final Prevalence is \n")
+      print(Prevalence_output)
+    }
   
-  if(Trace) 
-  {
-    cat("\n\n\n\t\t ***** Final Prevalence is \n")
-    print(Prevalence_output)
-  }
+    }
+  
+  
+  
   
   
   Prevalence_output
@@ -1062,7 +1175,8 @@ getSNVOnlyPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, detail=FALSE,Tra
 
 
 #' @export
-getSNVOnlyPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn, detail=FALSE,Trace=FALSE){
+getSNVOnlyPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn, detail=FALSE,Trace=FALSE)
+  {
   
 
   Prevalence=NA

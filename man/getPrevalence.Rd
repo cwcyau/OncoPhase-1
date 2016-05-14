@@ -6,7 +6,7 @@
 \usage{
 getPrevalence(lambda_S, mu_S, major_cn, minor_cn, lambda_G = NULL,
   mu_G = NULL, detail = 0, mode = "PhasedSNP", Trace = FALSE,
-  SameTumour = TRUE, SomaticCountAdjust = FALSE)
+  SameTumour = TRUE, SomaticCountAdjust = 0)
 }
 \arguments{
 \item{lambda_S}{: A count (or a vector of counts  if multiple samples ) of 
