@@ -78,12 +78,14 @@
 #' 
 #'@seealso \code{\link{getPrevalence}}
 #' @export
-getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip",SameTumour=TRUE,SomaticCountAdjust=0,SNPmode="Average")
+getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip",SameTumour=TRUE,SomaticCountAdjust=0,SNPmode="Average",ProgressOutputs=T)
 {
   
   
   
   # Extract the somatic mutations 
+  
+  cat("\n\n Cellular prevalence computation using OncoPhase")
   
   
   compulsory_columns=c("Chrom","End","IsGermline")
@@ -100,6 +102,57 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
          headers columns : ")
     print(compulsory_columns)
   }
+  
+  #Restriction to the region
+  
+  
+  # If a region is provided, a restriction is performed on the given region
+  if(!is.null(region)){
+    
+    cat("\n\n Restriction of the matrices within the region ", region,"...\n\n")
+    region_parts= unlist(strsplit(region,":"))
+    
+    chrom = region_parts[1]
+    startPosition = 1
+    endPosition = hg19_dfsize[chrom]
+    
+    #snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL
+    snp_allelecount_df = snp_allelecount_df[snp_allelecount_df$Chrom == chrom , ]
+    ref_allelecount_df = ref_allelecount_df[ref_allelecount_df$Chrom == chrom , ]
+    major_copynumber_df = major_copynumber_df[major_copynumber_df$Chrom == chrom , ]
+    minor_copynumber_df = minor_copynumber_df[minor_copynumber_df$Chrom == chrom , ]
+    if(!is.null(cnv_fraction))
+      cnv_fraction = cnv_fraction[cnv_fraction$Chrom == chrom , ]
+    if(!is.null(phasing_association_df))
+      phasing_association_df = phasing_association_df[phasing_association_df$Chrom == chrom , ]
+    if(!is.null(NormalcellContamination_df))
+      NormalcellContamination_df = NormalcellContamination_df[NormalcellContamination_df$Chrom == chrom , ]
+    
+    if(length(region_parts)>1){
+      coordinates = unlist(strsplit(region_parts[2],"-"))
+      startPosition = as.numeric(coordinates[1])
+      endPosition = as.numeric(coordinates[2])
+      
+      snp_allelecount_df = snp_allelecount_df[snp_allelecount_df$Start >= startPosition & snp_allelecount_df$End <= endPosition,]
+      ref_allelecount_df = ref_allelecount_df[ref_allelecount_df$Start >= startPosition & ref_allelecount_df$End <= endPosition,]
+      major_copynumber_df = major_copynumber_df[major_copynumber_df$Start >= startPosition & major_copynumber_df$End <= endPosition,]
+      minor_copynumber_df = minor_copynumber_df[minor_copynumber_df$Start >= startPosition & minor_copynumber_df$End <= endPosition,]
+      
+      if(!is.null(cnv_fraction))
+        cnv_fraction = cnv_fraction[cnv_fraction$Start >= startPosition & cnv_fraction$End <= endPosition,]
+      if(!is.null(phasing_association_df))
+        phasing_association_df= phasing_association_df[phasing_association_df$Start >= startPosition & phasing_association_df$End <= endPosition,]
+      if(!is.null(NormalcellContamination_df))
+        NormalcellContamination_df = NormalcellContamination_df[NormalcellContamination_df$Start >= startPosition & NormalcellContamination_df$End <= endPosition,]
+      
+    }
+  }
+  
+  
+  
+  
+  
+  
   
   if (is.null(tumoursamples)){
     tumoursamples = colnames(snp_allelecount_df[(nbFirstColumns+1):ncol(snp_allelecount_df)])
@@ -147,23 +200,7 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
     
     #Extraction of the list of somatic mutations the cellular prevalence will be computed.
     somatic_snp_allelecount_df = snp_allelecount_df[snp_allelecount_df$IsGermline==0, ]
-    # If a region is provided, a restriction is performed on the given region
-    if(!is.null(region)){
-      region_parts= unlist(strsplit(region,":"))
-      
-      chrom = region_parts[1]
-      startPosition = 1
-      endPosition = hg19_dfsize[chrom]
-      
-      somatic_snp_allelecount_df = somatic_snp_allelecount_df[somatic_snp_allelecount_df$Chrom == chrom , ]
-      
-      if(length(region_parts)>1){
-        coordinates = unlist(strsplit(region_parts[2],"-"))
-        startPosition = as.numeric(coordinates[1])
-        endPosition = as.numeric(coordinates[2])
-        somatic_snp_allelecount_df = somatic_snp_allelecount_df[somatic_snp_allelecount_df$Chrom == chrom & somatic_snp_allelecount_df$Start >= startPosition & somatic_snp_allelecount_df$End <= endPosition,]
-      }
-    }
+   
     
     
     #set the mode if numeric, 0=SNVOnly, 1 = PhasedSNP, 2=FlankingSNP, 3 = OptimalSNP
@@ -197,8 +234,22 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
     rownames(masterprevalence) <- rownames(somatic_snp_allelecount_df)
     masterprevalence[1:nbFirstColumns] = somatic_snp_allelecount_df[1:nbFirstColumns]
     
+    ProgressOutputs
+    
+    
     # masterprevalence=masterprevalence[listover_estimated,]
     #  mut=""
+    Nbmutations = nrow(masterprevalence)
+    
+    cat("\n\n Number of mutations : ", Nbmutations)
+    
+    if(ProgressOutputs && Nbmutations>100)
+    {
+      TraceProgress=T
+      cat(" \n For N > 100 mutations, a progression message giving information about the mutation under processing will be displayed each  (N/100)th mutation. Set ProgressOutputs to FALSE to turn off this. ")
+      step= Nbmutations%/%100
+    }
+    
     for (imut in 1:nrow(masterprevalence))
       #for (imut in 1:5)
     {
@@ -208,6 +259,9 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
       mut <- rownames(masterprevalence[imut,]); 
       mut_pos=as.numeric(masterprevalence[imut,"End"])
       
+      if(imut%%step==0){
+        cat("\n Mutation ", mut, " ", imut, "/",Nbmutations,sep="" )
+      }
       
       
       #For each mutation, we need to extract one value or one vector (if multiple samples)  of :
@@ -602,7 +656,7 @@ getPrevalenceSingleSample<-function(input_df,mode="PhasedSNP",NormalcellContamin
     
     prevalence= getPrevalence(lambda_S, mu_S, major_cn, minor_cn, lambda_G, mu_G, detail=T, mode=mode ,SomaticCountAdjust=SomaticCountAdjust)
     
-    if(is.na(prevalence[[1]]))
+    if(is.null(prevalence) || is.na(prevalence[[1]]))
       next
     
     masterprevalence[imut,"Prev"] = prevalence[[1]]$Prevalence
@@ -1232,11 +1286,15 @@ getSNVOnlyPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn
   
   condensedPrevalence=paste( context,Prevalence,paste(AllPrevalences,collapse="|"),residualNorm, sep=":")
   
+  
+  input_values = paste(lambda_S,mu_S,major_cn,minor_cn,sep=":")
+  
   if(detail){
-    Prevalence_output = list(Context=context,Prevalence=Prevalence,DetailedPrevalence=AllPrevalences,ResidualNorm=residualNorm, CondensedPrevalence = condensedPrevalence)
+    Prevalence_output = list(Context=context,Prevalence=Prevalence,DetailedPrevalence=AllPrevalences,ResidualNorm=residualNorm, CondensedPrevalence = condensedPrevalence,InputValues=input_values)
   }else{
     Prevalence_output = Prevalence
   }
+  
   
   if(Trace) {cat("\n\n\n\t\t ***** Final Prevalence is \n")
   print(Prevalence_output)
