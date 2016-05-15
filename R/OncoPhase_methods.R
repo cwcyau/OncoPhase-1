@@ -64,13 +64,13 @@
 #' 
 #' #Example 2 : Computing somatic mutation cellular prevalence on chromosome 15 of  patient 11152 (data retrieved from a parallel study)
 #' 
-#' data("chr15_OP1019")
-#' ds=chr15_OP1019
+#' data("chr22_1152")
+#' ds=chr22_11152
 #' masterprevalence_df=getPrevalenceMultiSamples(ds$snp_allelecount_df, ds$ref_allelecount_df,  ds$major_copynumber_df,ds$minor_copynumber_df,phasing_association_df = ds$phasing_association_df, cnv_fraction=ds$CNVFraction_df,nbFirstColumns=6,detail=FALSE)
 #' print(head(masterprevalence_df))
 #' 
-#' data("chr10_OP1019")
-#' df=chr10_OP1019
+#' data("chr22_11152")
+#' df=chr22_11152
 #' masterprevalence_df=getPrevalenceMultiSamples(df$snp_allelecount_df, df$ref_allelecount_df, df$major_copynumber_df,df$minor_copynumber_df,phasing_association_df=df$phasing_association_df, cnv_fraction=df$CNVFraction_df,nbFirstColumns=6, region="chr10:50000000-180000000")
 #' print(head(masterprevalence_df))
 #' 
@@ -449,7 +449,7 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
         for(sample in tumoursamples)
         {
           prevalence=prev_somatic[[sample]]  
-          if(is.na(prevalence)){
+          if(is.null(prevalence) || is.na(prevalence)){
             masterprevalence[mut,paste(sample,"Prevalence",sep="_")] = NA
             next()
           }

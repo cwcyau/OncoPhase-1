@@ -20,8 +20,7 @@
 #' 
 #' Input data for simple case studies can be generated with the function \code{\link{build_casestudy}}.
 #' 
-#' The package include experimental data for chromosome 10, 15, 18 and 22 for two patients retrieved from a parallel clinical study.
-#'  (see for example  \code{\link{chr10_OP1019}} and \code{\link{chr22_OP1019}} )
+#' The package include experimental data for chromosome 22 from a  patients retrieved from a parallel clinical study.(see \code{\link{chr22_11152}} )
 #' 
 #' For more detailed information on usage, see the package vignette, by typing
 #' \code{vignette("OncoPhase")}. All support questions should be emailed to the authors.
