@@ -1090,9 +1090,9 @@ getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_
     
     #We compute the prevalence for the two contexts and we choose the one with the less residual
     if(Trace) cat("\n\n\n Context : C1 (C=0)  SNV after CNA \n **********")
-    PrevalenceCond_C1 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C1",Trace)
+    PrevalenceCond_C1 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C1",Trace,NormalisedVAF=(SomaticCountAdjust==6))
     if(Trace) cat("\n\n\n Context : C2 (C=1)  SNV before CNA \n **********")
-    PrevalenceCond_C2 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C2",Trace)
+    PrevalenceCond_C2 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C2",Trace,NormalisedVAF=(SomaticCountAdjust==6))
     
     
     
@@ -1356,10 +1356,18 @@ getSNVOnlyPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn
 #' # SNV    2   3    3
 #'  
 #' @export
-getMatrices<-function(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context){
+getMatrices<-function(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context,NormalisedVAF=F){
   total_cn = major_cn + minor_cn
   omega_G = lambda_G/(mu_G+lambda_G)
   omega_S= lambda_S/(mu_S +lambda_S) 
+  
+  if(NormalisedVAF){
+    Locus_Coverage=(mu_G+lambda_G + mu_S +lambda_S) /2
+    
+    omega_G = min(1, lambda_G/Locus_Coverage)
+    omega_S= min(1, lambda_S/Locus_Coverage)
+  }
+  
   W=matrix(c(omega_G,0,0,omega_S),ncol=2,nrow=2)
   colnames(W)= c("SNP","SNV")
   rownames(W) = c("SNP","SNV")
@@ -1504,7 +1512,7 @@ getMatricesSNVOnly<-function(lambda_S,mu_S,major_cn,minor_cn,context, sigma=NULL
 #' 
 #' @seealso \code{\link{getPrevalence}},   \code{\link{getMatrices}}
 #' @export
-getPrevalenceLinear<-function(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context,Trace=FALSE){
+getPrevalenceLinear<-function(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context,Trace=FALSE,NormalisedVAF=F){
   
   if(Trace){
     cat("\n\n The input :\n ")
@@ -1512,7 +1520,7 @@ getPrevalenceLinear<-function(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,con
   }
 
    
-  matrix=getMatrices(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context)
+  matrix=getMatrices(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context,NormalisedVAF=NormalisedVAF)
   if(Trace){
     cat("\n\n The matrices :\n ")
     print(matrix)

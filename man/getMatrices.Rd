@@ -4,7 +4,8 @@
 \alias{getMatrices}
 \title{Generate the matrices C, W and M from a set of parameters.}
 \usage{
-getMatrices(lambda_S, mu_S, major_cn, minor_cn, lambda_G, mu_G, context)
+getMatrices(lambda_S, mu_S, major_cn, minor_cn, lambda_G, mu_G, context,
+  NormalisedVAF = F)
 }
 \arguments{
 \item{lambda_S}{: A count of 

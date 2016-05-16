@@ -10,7 +10,7 @@ getPrevalenceMultiSamples(snp_allelecount_df, ref_allelecount_df,
   NormalcellContamination_df = NULL, tumoursamples = NULL,
   nbFirstColumns = 3, region = NULL, detail = TRUE, LocusRadius = 10000,
   NoPrevalence.action = "Skip", SameTumour = TRUE, SomaticCountAdjust = 0,
-  SNPmode = "Average")
+  SNPmode = "Average", ProgressOutputs = T)
 }
 \arguments{
 \item{snp_allelecount_df}{A data frame containing for each mutation the  allelic 
