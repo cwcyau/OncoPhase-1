@@ -1058,25 +1058,25 @@ getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_
         mu_S=mu_G + lambda_G - lambda_S
     }
     
-    if(SomaticCountAdjust==2){
-        mu_S=mu_G + lambda_G - lambda_S
-    }
-    
-    if(SomaticCountAdjust==3){
-      if(mu_G < qpois(0.001,max(0,mu_S + lambda_S - lambda_G)))
-        mu_G=mu_S + lambda_S - lambda_G
-    }
-    
-    if(SomaticCountAdjust==4){
-      mu_G=mu_S + lambda_S - lambda_G
-    }
-    
-    if(SomaticCountAdjust==5){
-      if(mu_S < qpois(0.001,max(0,mu_G + lambda_G - lambda_S))){
-        mu_S=NA
-      }else if(mu_G < qpois(0.001,max(0,mu_S + lambda_S - lambda_G))){
-        mu_G=NA
-      }
+#     if(SomaticCountAdjust==2){
+#         mu_S=mu_G + lambda_G - lambda_S
+#     }
+#     
+#     if(SomaticCountAdjust==3){
+#       if(mu_G < qpois(0.001,max(0,mu_S + lambda_S - lambda_G)))
+#         mu_G=mu_S + lambda_S - lambda_G
+#     }
+#     
+#     if(SomaticCountAdjust==4){
+#       mu_G=mu_S + lambda_S - lambda_G
+#     }
+#     
+#     if(SomaticCountAdjust==5){
+#       if(mu_S < qpois(0.001,max(0,mu_G + lambda_G - lambda_S))){
+#         mu_S=NA
+#       }else if(mu_G < qpois(0.001,max(0,mu_S + lambda_S - lambda_G))){
+#         mu_G=NA
+#       }
     }
     
 
@@ -1090,9 +1090,9 @@ getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_
     
     #We compute the prevalence for the two contexts and we choose the one with the less residual
     if(Trace) cat("\n\n\n Context : C1 (C=0)  SNV after CNA \n **********")
-    PrevalenceCond_C1 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C1",Trace,NormalisedVAF=(SomaticCountAdjust==6))
+    PrevalenceCond_C1 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C1",Trace,NormalisedVAF=(SomaticCountAdjust==2))
     if(Trace) cat("\n\n\n Context : C2 (C=1)  SNV before CNA \n **********")
-    PrevalenceCond_C2 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C2",Trace,NormalisedVAF=(SomaticCountAdjust==6))
+    PrevalenceCond_C2 = getPrevalenceLinear(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,"C2",Trace,NormalisedVAF=(SomaticCountAdjust==2))
     
     
     
