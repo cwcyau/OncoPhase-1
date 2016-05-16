@@ -226,28 +226,36 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
     # LinkedGermlineMutation=getLocusGermlineMutations(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode,  LocusRadius)
     
     
-    
-    #Preparing the data frame to contains the somatic mutations cellular prevalences.
-    masterprevalence<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=nbFirstColumns + length(tumoursamples))
+    #Initialising the masterprevalence matrice, setting the headers
+    prevalence_columns=tumoursamples
+    if(detail ==1)
+    {
+      prevalence_columns=c()
+      for(sample in tumoursamples){
+        prevalence_columns=c(prevalence_columns,paste(sample,c("Prevalence","Context","Germ","Alt","Both","ResidualNorm","InputValues"),sep="_"))
+      }
+    }
+    masterprevalence<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=nbFirstColumns + length(prevalence_columns))
     masterprevalence<-as.data.frame(masterprevalence)
-    colnames(masterprevalence) <- c(colnames(somatic_snp_allelecount_df[1:nbFirstColumns]),tumoursamples)
+    colnames(masterprevalence) <- c(colnames(somatic_snp_allelecount_df[1:nbFirstColumns]),prevalence_columns)
     rownames(masterprevalence) <- rownames(somatic_snp_allelecount_df)
     masterprevalence[1:nbFirstColumns] = somatic_snp_allelecount_df[1:nbFirstColumns]
     
-    ProgressOutputs
+    
     
     
     # masterprevalence=masterprevalence[listover_estimated,]
     #  mut=""
     Nbmutations = nrow(masterprevalence)
     
+    
     cat("\n\n Number of mutations : ", Nbmutations)
     
-    if(ProgressOutputs && Nbmutations>100)
+    if(ProgressOutputs )
     {
       TraceProgress=T
-      cat(" \n For N > 100 mutations, a progression message giving information about the mutation under processing will be displayed each  (N/100)th mutation. Set ProgressOutputs to FALSE to turn off this. ")
-      step= Nbmutations%/%100
+      cat(" \n A progression message giving information about the mutation under processing will be displayed each  (N/100)th mutation. Set ProgressOutputs to FALSE to turn off this. ")
+      trace_step= ceiling(Nbmutations/100)
     }
     
     for (imut in 1:nrow(masterprevalence))
@@ -259,7 +267,7 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
       mut <- rownames(masterprevalence[imut,]); 
       mut_pos=as.numeric(masterprevalence[imut,"End"])
       
-      if(imut%%step==0){
+      if(imut%%trace_step==0){
         cat("\n Mutation ", mut, " ", imut, "/",Nbmutations,sep="" )
       }
       
@@ -1077,7 +1085,7 @@ getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_
 #       }else if(mu_G < qpois(0.001,max(0,mu_S + lambda_S - lambda_G))){
 #         mu_G=NA
 #       }
-    }
+#   }
     
 
   }
