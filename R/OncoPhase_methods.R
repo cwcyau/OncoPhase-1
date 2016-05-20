@@ -1,3 +1,14 @@
+
+#' @export
+remove_outliers <- function(x, na.rm = TRUE, ...) {
+  qnt <- quantile(x, probs=c(.25, .75), na.rm = na.rm, ...)
+  H <- 1.5 * IQR(x, na.rm = na.rm)
+  y <- x
+  y=y[x > (qnt[1] - H)] 
+  y=y[x < (qnt[2] + H)] 
+  y
+}
+
 #' @export
 getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,samples_to_pool=NULL,  nbFirstColumns=3, region=NULL,  LocusRadius = 10000,ProgressOutputs=T)
 {
@@ -109,8 +120,8 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
   
   
   #Initialising the mutationprofile matrice and  setting the headers
-  mutation_profiles=c("varcounts_snv","refcounts_snv","major_cn","minor_cn","varcounts_snp","refcounts_snp","normal_fraction","scnv_fraction")
-  mutationprofile<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=nbFirstColumns + 8)
+  mutation_profiles=c("varcounts_snv","refcounts_snv","major_cn","minor_cn","varcounts_snp","refcounts_snp","normal_fraction","scnv_fraction","nbSamples","nbSNPs")
+  mutationprofile<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=nbFirstColumns + 10)
   mutationprofile<-as.data.frame(mutationprofile)
   colnames(mutationprofile) <- c(colnames(somatic_snp_allelecount_df[1:nbFirstColumns]),mutation_profiles)
   rownames(mutationprofile) <- rownames(somatic_snp_allelecount_df)
@@ -126,6 +137,7 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
     trace_step= ceiling(Nbmutations/100)
   }
   
+  #mutationprofile=mutationprofile[rownames(bad_mutations),]
   for (imut in 1:nrow(mutationprofile))
   {
     #Mutation name and mutation position
@@ -246,15 +258,46 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
     notNASNP_samples=names(mylist2[!is.na(mylist2)])    
     notNA_Samples=intersect(notNASNV_samples, notNASNP_samples)
     
+    #Select only the samples with high quality call.
+    Qual = unlist(strsplit(as.character(snp_allelecount_df[mut,"Qual"]),":"))[get_originalorder(notNA_Samples)]
+    notNA_Samples=notNA_Samples[Qual!="L" & Qual !="L|L"]
+    nbSamples=length(notNA_Samples)
+    nbSNPs=length(linkedGermlines_list)
+    if(length(notNA_Samples)==0)
+      next
+    
     #####Pooling the counts 
     varcounts_snv=sum(snp_allelecount_snv[mut, notNA_Samples],na.rm=T)
-    varcounts_snp=sum(colMeans(snp_allelecount_snp[linkedGermlines_list, notNA_Samples],na.rm=T))
+    varcounts_snp=sum(apply(snp_allelecount_snp[linkedGermlines_list, notNA_Samples,drop=F],2,function(x) mean(remove_outliers(x),na.rm=T)),na.rm=T)
     refcounts_snv=sum(ref_allelecount_snv[mut, notNA_Samples],na.rm=T)
-    refcounts_snp=sum(colMeans(ref_allelecount_snp[linkedGermlines_list, notNA_Samples],na.rm=T))
+    refcounts_snp=sum(apply(ref_allelecount_snp[linkedGermlines_list, notNA_Samples,drop=F],2,function(x) mean(remove_outliers(x),na.rm=T)),na.rm=T)
     
+    
+    #   if(mut %in% rownames(bad_mutations))
+    #   {
+    #     cat("\n\n\n\n\n\n")
+    #     cat("\n\n\n SNV count : \n")
+    #     print(snp_allelecount_snv[mut,])
+    #     cat("\n\n SNP count : \n")
+    #     print(snp_allelecount_snp[linkedGermlines_list, ])
+    #     cat("\n\n\n SNV count filtered : \n")
+    #     print(snp_allelecount_snv[mut,notNA_Samples])
+    #     cat("\n\n SNP count filtered  : \n")
+    #     print(snp_allelecount_snp[linkedGermlines_list, notNA_Samples])
+    #     cat("\n\n\n SNP COLMEANS  : \n")
+    #     print(apply(snp_allelecount_snp[linkedGermlines_list, notNA_Samples],2,function(x) mean(remove_outliers(x),na.rm=T)))
+    #     print(snp_allelecount_snv[mut,notNA_Samples])
+    #     cat("\n\n SNP count filtered  : \n")
+    #     cat("\n\n\n Sum SNV : \n")
+    #     print(sum(snp_allelecount_snv[mut, notNA_Samples],na.rm=T))
+    #     cat("\n\n sum SNP  : \n")
+    #     print(varcounts_snp)
+    #   }
     
     #####Source of information 2: The Copy Number 
     
+    #if(mut=="chr6_18994537_G_T")
+    #  stop()
     
     #For the somatic mutation
     if(!is.null(cnv_fraction)) phi_cn_sample_somatic = cnv_fraction[mut,samples_to_pool,drop=F]
@@ -280,7 +323,7 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
     
     
     mutationprofile[mut,mutation_profiles] =
-      c(varcounts_snv,refcounts_snv,major_cn,minor_cn,varcounts_snp,refcounts_snp,normal_fraction,scnv_fraction)
+      c(varcounts_snv,refcounts_snv,major_cn,minor_cn,varcounts_snp,refcounts_snp,normal_fraction,scnv_fraction,nbSamples,nbSNPs)
     
     
     
@@ -291,6 +334,8 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
   mutationprofile = mutationprofile[!is.na(mutationprofile$varcounts_snv),]
   mutationprofile 
   }
+
+
 
 
 
