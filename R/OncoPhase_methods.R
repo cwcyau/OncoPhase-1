@@ -1420,7 +1420,6 @@ getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_
     condensedPrevalence=paste( context,Prevalence,paste(AllPrevalences,collapse="|"),residualNorm, sep=":")
     lambda_G=as.numeric(format(round(lambda_G, 2), nsmall = 2))
     mu_G=as.numeric(format(round(mu_G, 2), nsmall = 2))
-    format(round(x, 2), nsmall = 2)
     input_values = paste(lambda_S,mu_S,major_cn,minor_cn, lambda_G, mu_G,sep=":")
     
     if(detail){
