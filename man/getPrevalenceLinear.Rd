@@ -5,7 +5,7 @@
 \title{Compute the cellular prevalence of each group of cells}
 \usage{
 getPrevalenceLinear(lambda_S, mu_S, major_cn, minor_cn, lambda_G, mu_G, context,
-  Trace = FALSE, NormalisedVAF = F)
+  Trace = FALSE, LocusCoverage = 1)
 }
 \arguments{
 \item{lambda_S}{: A count of 

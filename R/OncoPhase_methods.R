@@ -1,3 +1,298 @@
+#' @export
+getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,samples_to_pool=NULL,  nbFirstColumns=3, region=NULL,  LocusRadius = 10000,ProgressOutputs=T)
+{
+  #set the mode if numeric, 0=SNVOnly, 1 = PhasedSNP, 2=FlankingSNP, 3 = OptimalSNP
+  numeric_mode=c("SNVOnly", "PhasedSNP","FlankingSNP","OptimalSNP")
+  if(is.numeric(mode))
+  {
+    if(mode %in% c(0,1,2,3))
+    {
+      mode = numeric_mode[mode +1 ]
+    }else{
+      stop("\n\n Mode parameter, if numeric,  should be either 0, 1,  2 or 3")
+    }
+  }
+  
+  
+  cat("\n\n Extracting the mutations' profiles for prevalence computation")
+  
+  
+  compulsory_columns=c("Chrom","End","IsGermline")
+  
+  if (length(setdiff(compulsory_columns,colnames(snp_allelecount_df)))>0){
+    stop(" The allele count master matrices should have at least the following headers
+         columns : ")
+    print(compulsory_columns)
+  }
+  
+  
+  if (length(setdiff(compulsory_columns,colnames(ref_allelecount_df)))>0){
+    stop(" The allele count master matrices should have at least the following 
+         headers columns : ")
+    print(compulsory_columns)
+  }
+  
+  #Restriction to the region
+  # If a region is provided, a restriction is performed on the given region
+  if(!is.null(region)){
+    cat("\n\n Restriction of the matrices within the region ", region,"...\n\n")
+    region_parts= unlist(strsplit(region,":"))
+    
+    chrom = region_parts[1]
+    startPosition = 1
+    endPosition = hg19_dfsize[chrom]
+    
+    snp_allelecount_df = snp_allelecount_df[snp_allelecount_df$Chrom == chrom , ]
+    ref_allelecount_df = ref_allelecount_df[ref_allelecount_df$Chrom == chrom , ]
+    major_copynumber_df = major_copynumber_df[major_copynumber_df$Chrom == chrom , ]
+    minor_copynumber_df = minor_copynumber_df[minor_copynumber_df$Chrom == chrom , ]
+    if(!is.null(cnv_fraction))
+      cnv_fraction = cnv_fraction[cnv_fraction$Chrom == chrom , ]
+    if(!is.null(phasing_association_df))
+      phasing_association_df = phasing_association_df[phasing_association_df$Chrom == chrom , ]
+    if(!is.null(NormalcellContamination_df))
+      NormalcellContamination_df = NormalcellContamination_df[NormalcellContamination_df$Chrom == chrom , ]
+    
+    if(length(region_parts)>1){
+      coordinates = unlist(strsplit(region_parts[2],"-"))
+      startPosition = as.numeric(coordinates[1])
+      endPosition = as.numeric(coordinates[2])
+      
+      snp_allelecount_df = snp_allelecount_df[snp_allelecount_df$Start >= startPosition & snp_allelecount_df$End <= endPosition,]
+      ref_allelecount_df = ref_allelecount_df[ref_allelecount_df$Start >= startPosition & ref_allelecount_df$End <= endPosition,]
+      major_copynumber_df = major_copynumber_df[major_copynumber_df$Start >= startPosition & major_copynumber_df$End <= endPosition,]
+      minor_copynumber_df = minor_copynumber_df[minor_copynumber_df$Start >= startPosition & minor_copynumber_df$End <= endPosition,]
+      
+      if(!is.null(cnv_fraction))
+        cnv_fraction = cnv_fraction[cnv_fraction$Start >= startPosition & cnv_fraction$End <= endPosition,]
+      if(!is.null(phasing_association_df))
+        phasing_association_df= phasing_association_df[phasing_association_df$Start >= startPosition & phasing_association_df$End <= endPosition,]
+      if(!is.null(NormalcellContamination_df))
+        NormalcellContamination_df = NormalcellContamination_df[NormalcellContamination_df$Start >= startPosition & NormalcellContamination_df$End <= endPosition,]
+      
+    }
+  }
+  
+  #If samples to pool not provided, then the columns from nbFirstColumn + 1 are considered
+  if (is.null(samples_to_pool)){
+    samples_to_pool = colnames(snp_allelecount_df[(nbFirstColumns+1):ncol(snp_allelecount_df)])
+  }
+  
+  
+  #The samples to pool should be present in all the matrices headers
+  samples_to_pool = Reduce(intersect,list(samples_to_pool,colnames(snp_allelecount_df),
+                                          colnames(ref_allelecount_df),
+                                          colnames(major_copynumber_df), 
+                                          colnames(minor_copynumber_df)
+  ))
+  
+  if(!is.null(cnv_fraction))
+    samples_to_pool =intersect(samples_to_pool,colnames(cnv_fraction) )
+  
+  if(length(samples_to_pool) ==0)
+  {
+    stop(" None of the tumour samples provided is present in the five  matrices :
+         snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df, cnv_fraction")
+  }
+  
+  #Ensure the column are turn numeric
+  snp_allelecount_df=numeric_column(snp_allelecount_df,samples_to_pool)
+  ref_allelecount_df=numeric_column(ref_allelecount_df,samples_to_pool)  
+  major_copynumber_df=numeric_column(major_copynumber_df,samples_to_pool)
+  minor_copynumber_df=numeric_column(minor_copynumber_df,samples_to_pool)
+  if(!is.null(cnv_fraction)) cnv_fraction=numeric_column(cnv_fraction,samples_to_pool)
+  
+  
+  #Extraction of the list of somatic mutations 
+  somatic_snp_allelecount_df = snp_allelecount_df[snp_allelecount_df$IsGermline==0, ]
+  
+  
+  
+  #Initialising the mutationprofile matrice and  setting the headers
+  mutation_profiles=c("varcounts_snv","refcounts_snv","major_cn","minor_cn","varcounts_snp","refcounts_snp","normal_fraction","scnv_fraction")
+  mutationprofile<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=nbFirstColumns + 8)
+  mutationprofile<-as.data.frame(mutationprofile)
+  colnames(mutationprofile) <- c(colnames(somatic_snp_allelecount_df[1:nbFirstColumns]),mutation_profiles)
+  rownames(mutationprofile) <- rownames(somatic_snp_allelecount_df)
+  mutationprofile[1:nbFirstColumns] = somatic_snp_allelecount_df[1:nbFirstColumns]
+  
+  Nbmutations = nrow(mutationprofile)
+  cat("\n\n Number of mutations : ", Nbmutations)
+  
+  if(ProgressOutputs )
+  {
+    TraceProgress=T
+    cat(" \n A progression message giving information about the mutation under processing will be displayed each  (N/100)th mutation. Set ProgressOutputs to FALSE to turn off this. \n\n")
+    trace_step= ceiling(Nbmutations/100)
+  }
+  
+  for (imut in 1:nrow(mutationprofile))
+  {
+    #Mutation name and mutation position
+    mut <- rownames(mutationprofile[imut,]); 
+    mut_pos=as.numeric(mutationprofile[imut,"End"])
+    
+    if(imut%%trace_step==0)
+      cat(" ", imut, "/",Nbmutations,sep="" )
+    
+    
+    #For each mutation, we need to extract one value or one vector (if multiple samples)  of :
+    # - lambda_G and mu_G : Respectively Variant and reference coverage/count of the phased/nearby Germline Mutations
+    # - lambda_S and mu_S : Respectively Variant and reference coverage/count of the somatic mutations
+    # - major_cn and minor_cn : major and minor copy number at the locus of the somatic mutations 
+    # - CNV_fraction : If provided, fraction of cells affected by the CNV
+    # - NormalCell_fraction : If provided, fraction of normal cell contamination.
+    
+    mode_locus=mode  # Mode to consider while computing the mutation prevalence and retrievning the germline on the same locus with the mutation
+    if(mode=="OptimalSNP") # If Mode = Optimal, then we  willtry first PhasedSNP, latter if no germline found, we  will try FlankingSNP
+      mode_locus="PhasedSNP"
+    
+    #The SNV Allele Counts
+    snp_allelecount_snv  = snp_allelecount_df[mut, samples_to_pool]
+    ref_allelecount_snv  = ref_allelecount_df[mut, samples_to_pool]
+    
+    
+    
+    
+    if(mode!="SNVOnly")
+    {
+      
+      
+      #####Source of information 1: The list of linked germline mutations 
+      
+      linked_germline_df=getLocusGermlineMutations(somatic_snp_allelecount_df[mut,], snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  samples_to_pool,mode_locus,  LocusRadius)
+      linked_germline=as.character(linked_germline_df[mut,"LinkedGermlines"])
+      
+      #Id mode=Optimal then in case no germline is found with PhasedSNP the search is relaunched with FlankingSNP
+      
+      if(is.null(linked_germline)|| is.na(linked_germline))
+        if((mode_locus=="PhasedSNP")&&(mode=="OptimalSNP")){
+          mode_locus="FlankingSNP"
+          
+          linked_germline_df=getLocusGermlineMutations(somatic_snp_allelecount_df[mut,], snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  samples_to_pool,mode_locus,  LocusRadius)
+          linked_germline=as.character(linked_germline_df[mut,"LinkedGermlines"])
+          
+          
+        }
+      
+      if(is.null(linked_germline)|| is.na(linked_germline))
+        next
+      
+      #List of germline mutations linked to the considered somatic mutation
+      linkedGermlines_list<-unlist(strsplit(linked_germline,":"))
+      if (length(unlist(linkedGermlines_list))==0)
+        next
+      
+      
+      #The SNP Allele Counts
+      snp_allelecount_snp  = snp_allelecount_df[linkedGermlines_list, samples_to_pool]
+      ref_allelecount_snp  = ref_allelecount_df[linkedGermlines_list,  samples_to_pool] 
+      
+      
+      #If mode is FlankingSNP, we reduce this list to the closest Germline SNP mutation having all the required information (Alleles Count and Copy number Information)
+      
+      if(mode_locus=="FlankingSNP")
+      {
+        snpwellcount_germlines=  vector("numeric",length=length(samples_to_pool))
+        refwellcount_germlines = vector("numeric",length=length(samples_to_pool))
+        
+        names(snpwellcount_germlines) = samples_to_pool
+        names(refwellcount_germlines) = samples_to_pool
+        
+        
+        #For the Linked germline mutations
+        major_cn_sample_LinkedGermline_df = major_copynumber_df[linkedGermlines_list,samples_to_pool,drop=F ]
+        snp_allelecount_LinkedGermline_df= data.matrix(snp_allelecount_df[linkedGermlines_list,samples_to_pool, drop=F])
+        ref_allelecount_LinkedGermline_df= data.matrix(ref_allelecount_df[linkedGermlines_list,samples_to_pool, drop=F])
+        #To fix a bug when only one germline, 
+        snp_allelecount_LinkedGermline_df=as.data.frame(snp_allelecount_LinkedGermline_df)
+        ref_allelecount_LinkedGermline_df=as.data.frame(ref_allelecount_LinkedGermline_df)
+        
+        
+        for(sample in samples_to_pool)
+        {
+          
+          selectedlinkedGermlines_list = rownames(major_cn_sample_LinkedGermline_df[!is.na(major_cn_sample_LinkedGermline_df[,sample]) ,sample,drop=F])
+          selectedlinkedGermlines_list = intersect(selectedlinkedGermlines_list,rownames(snp_allelecount_LinkedGermline_df[!is.na(snp_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
+          selectedlinkedGermlines_list =  intersect(selectedlinkedGermlines_list,rownames(ref_allelecount_LinkedGermline_df[!is.na(ref_allelecount_LinkedGermline_df[,sample]),sample,drop=F] ))
+          
+          #Compute the distance to the somatic mutation
+          distance_germlines= snp_allelecount_df[selectedlinkedGermlines_list,"End", drop=F]
+          distance_germlines["distance"] = abs(as.numeric(distance_germlines$End) - mut_pos)
+          #select the closest germline
+          closest_germline = rownames(distance_germlines[distance_germlines$distance== min(distance_germlines$distance, na.rm=T), ])
+          
+          if(length(closest_germline)==0)
+            next
+          
+          #retrieve its allele counts
+          snpwellcount_germlines[sample] = snp_allelecount_LinkedGermline_df[closest_germline, sample]
+          refwellcount_germlines[sample] = ref_allelecount_LinkedGermline_df[closest_germline, sample]
+        }
+        
+        snp_allelecount_snp  = snpwellcount_germlines
+        ref_allelecount_snp  = refwellcount_germlines
+      }
+      
+    }
+    
+    
+    #Pooling the count
+    
+    #Remove samples either NA at the SNV or NA at all the SNP
+    mylist=unlist(snp_allelecount_snv)
+    notNASNV_samples=names(mylist[!is.na(mylist)])
+    mylist2=colMeans(snp_allelecount_df[linkedGermlines_list, samples_to_pool],na.rm=T)
+    notNASNP_samples=names(mylist2[!is.na(mylist2)])    
+    notNA_Samples=intersect(notNASNV_samples, notNASNP_samples)
+    
+    #####Pooling the counts 
+    varcounts_snv=sum(snp_allelecount_snv[mut, notNA_Samples],na.rm=T)
+    varcounts_snp=sum(colMeans(snp_allelecount_snp[linkedGermlines_list, notNA_Samples],na.rm=T))
+    refcounts_snv=sum(ref_allelecount_snv[mut, notNA_Samples],na.rm=T)
+    refcounts_snp=sum(colMeans(ref_allelecount_snp[linkedGermlines_list, notNA_Samples],na.rm=T))
+    
+    
+    #####Source of information 2: The Copy Number 
+    
+    
+    #For the somatic mutation
+    if(!is.null(cnv_fraction)) phi_cn_sample_somatic = cnv_fraction[mut,samples_to_pool,drop=F]
+    if(!is.null(NormalcellContamination_df))  NC_sample_somatic = NormalCellContamination_df[mut,samples_to_pool,drop=F]
+    major_cn_sample_somatic = major_copynumber_df[mut,samples_to_pool, drop=F]
+    minor_cn_sample_somatic = minor_copynumber_df[mut,samples_to_pool,drop=F]
+    
+    #Retrieve the unique copy number profile
+    major_cn = unique(unlist(major_cn_sample_somatic))
+    minor_cn = unique(unlist(minor_cn_sample_somatic))
+    normal_fraction=NA
+    scnv_fraction = NA
+    if(!is.null(cnv_fraction)) 
+      scnv_fraction = unique(unlist(phi_cn_sample_somatic))
+    if(!is.null(NormalcellContamination_df)) 
+      normal_fraction = unique(unlist(NC_sample_somatic))
+    
+    if(length(major_cn)>1 || length(minor_cn)>1){
+      warnings("\n\n The SNV do not have the same copy number profile across the samples, pooling is not possible, mutation will be skipped")
+      next
+    }
+    
+    
+    
+    mutationprofile[mut,mutation_profiles] =
+      c(varcounts_snv,refcounts_snv,major_cn,minor_cn,varcounts_snp,refcounts_snp,normal_fraction,scnv_fraction)
+    
+    
+    
+    
+  }
+  
+  
+  mutationprofile = mutationprofile[!is.na(mutationprofile$varcounts_snv),]
+  mutationprofile 
+  }
+
+
 
 
 
@@ -78,7 +373,7 @@
 #' 
 #'@seealso \code{\link{getPrevalence}}
 #' @export
-getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip",SameTumour=TRUE,LocusCoverage=1,ProgressOutputs=T)
+getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=3, region=NULL,detail=TRUE,  LocusRadius = 10000,SameTumour=TRUE,LocusCoverage=1,ProgressOutputs=T)
 {
   
   
@@ -567,13 +862,11 @@ getPrevalenceMultiSamples<-function(snp_allelecount_df, ref_allelecount_df, majo
 #' 
 #'@seealso \code{\link{getPrevalence}}
 #' @export
-getPrevalenceSingleSample<-function(input_df,mode="PhasedSNP",NormalcellContamination_df=NULL,tumoursamples=NULL,  nbFirstColumns=0, region=NULL,detail=TRUE,  LocusRadius = 10000,NoPrevalence.action="Skip" ,LocusCoverage=1)
+getPrevalenceSingleSample<-function(input_df,mode="PhasedSNP",  nbFirstColumns=0, region=NULL,detail=TRUE,  LocusCoverage=1)
 {
   
-  # Extract the somatic mutations 
-  
-  
-  compulsory_columns=c("lambda_S","mu_S","major_cn","minor_cn")
+#Check the compulsory columns
+  compulsory_columns=c("varcounts_snv","refcounts_snv","major_cn","minor_cn")
   
   if (length(setdiff(compulsory_columns,colnames(input_df)))>0){
     stop(" The allele count master matrices should have at least the following headers
@@ -595,31 +888,32 @@ getPrevalenceSingleSample<-function(input_df,mode="PhasedSNP",NormalcellContamin
   }
   
   
+  #Prepare the master matrices for the prevalence.
   masterprevalence=as.data.frame(matrix(nrow=nrow(input_df), ncol=nbFirstColumns+6))
   rownames(masterprevalence) = rownames(input_df)
   if(nbFirstColumns>0){
     masterprevalence[1:nbFirstColumns] = input_df[1:nbFirstColumns]
-    colnames(masterprevalence) = c(colnames(input_df[1:nbFirstColumns]),"Prev", "Germ","Alt","Both","Residual","Context")
+    colnames(masterprevalence) = c(colnames(input_df[1:nbFirstColumns]),"Prevalence", "Germ","Alt","Both","Residual","Context")
   }else{
-    colnames(masterprevalence) = c("Prev", "Germ","Alt","Both","Residual","Context")
+    colnames(masterprevalence) = c("Prevalence", "Germ","Alt","Both","Residual","Context")
   }
   
   
   for(imut in 1: nrow(input_df))
   {
-    lambda_S = input_df[imut,"lambda_S"]
-    mu_S = input_df[imut,"mu_S"]
+    lambda_S = input_df[imut,"varcounts_snv"]
+    mu_S = input_df[imut,"refcounts_snv"]
     minor_cn=input_df[imut,"minor_cn"]
     major_cn=input_df[imut,"major_cn"]
-    lambda_G=input_df[imut,"lambda_G"]
-    mu_G=input_df[imut,"mu_G"]
+    lambda_G=input_df[imut,"varcounts_snp"]
+    mu_G=input_df[imut,"refcounts_snp"]
     
     prevalence= getPrevalence(lambda_S, mu_S, major_cn, minor_cn, lambda_G, mu_G, detail=T, mode=mode ,LocusCoverage=LocusCoverage)
     
-    if(is.null(prevalence) || is.na(prevalence[[1]]))
+    if(is.null(prevalence) ||  length(prevalence)==0 || is.na(prevalence[[1]]) )
       next
     
-    masterprevalence[imut,"Prev"] = prevalence[[1]]$Prevalence
+    masterprevalence[imut,"Prevalence"] = prevalence[[1]]$Prevalence
     masterprevalence[imut,"Germ"] = prevalence[[1]]$DetailedPrevalence["Germ"]
     masterprevalence[imut,"Alt"] = prevalence[[1]]$DetailedPrevalence["Alt"]
     masterprevalence[imut,"Both"] = prevalence[[1]]$DetailedPrevalence["Both"]
@@ -757,6 +1051,8 @@ getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NUL
   {
   
 
+  
+  
   N=length(lambda_S) # Number of samples
   
   if((length(mu_S)!=N) || 
@@ -800,6 +1096,9 @@ getPrevalence<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G=NULL, mu_G=NUL
 #' @export
 getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G, detail=0,Trace=FALSE,LocusCoverage=1)
   {
+  
+  
+  
     #if(length(lambda_G)>1)
     {
       tumoursamples= names(lambda_G)
@@ -847,7 +1146,6 @@ getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G
         minor_cn=minor_cn[sample],
         lambda_G=lambda_G[sample],
         mu_G=mu_G[sample],#/ omega_G[sample] - lambda_G[sample],
-        # NoPrevalence.action=NoPrevalence.action,
         detail=1,
         Trace=Trace,
         LocusCoverage=LocusCoverage)
@@ -996,6 +1294,10 @@ getFlankingSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu
 #' @export
 getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn, lambda_G, mu_G, detail=FALSE,Trace=FALSE,LocusCoverage=1)
   {
+  
+  
+ 
+  
 
   Prevalence=NA
   DetailedPrevvalence=NA
@@ -1282,7 +1584,6 @@ getSNVOnlyPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_cn
 getMatrices<-function(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context,LocusCoverage=1){
   total_cn = major_cn + minor_cn
   
-  
   if((LocusCoverage>0)){
     if(LocusCoverage==1){
       Locus_Coverage= mu_G+lambda_G
@@ -1445,7 +1746,7 @@ getMatricesSNVOnly<-function(lambda_S,mu_S,major_cn,minor_cn,context, sigma=NULL
 #' @export
 getPrevalenceLinear<-function(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context,Trace=FALSE,LocusCoverage=1){
   
-  
+
   
   if(is.na(mu_S) || is.na(mu_G)){
     Prevalence_output=NA
@@ -1463,7 +1764,7 @@ getPrevalenceLinear<-function(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,con
   }
 
    
-  matrix=getMatrices(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context,LocusCoverage=1)
+  matrix=getMatrices(lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G,context,LocusCoverage=LocusCoverage)
   if(Trace){
     cat("\n\n The matrices :\n ")
     print(matrix)
@@ -1646,8 +1947,16 @@ getPrevalenceSNVOnly<-function(lambda_S,mu_S,major_cn,minor_cn,context,sigma=NUL
 getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode="PhasedSNP",  LocusRadius)
   
 {
-  
-  
+ 
+    #We then  retrieve for each somatic mutation the list of germline mutations to consider for the prevalence computation
+    # a) if PhasedSNP mode, then the considered germline are the germline mutations phased to the somatic mutation and located within the same locus
+    # b) if FlankingSNP mode then the considered germline are the close germlines located within LocusRadius distance from the somatic mutation.
+    #c) if OptimalSNP mode tho columns are provided, the first for the phased germline, and if only there is not phasing information for this mutation, then the second column contains the close germlines located within LocusRadius
+    
+    
+    # LinkedGermlineMutation=getLocusGermlineMutations(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  samples_to_pool,mode,  LocusRadius)
+    
+ 
   
   Association=("Phased_List" %in% colnames(phasing_association_df))
   PhasingCode=(length(intersect(colnames(snp_allelecount_df[cifs:ncol(snp_allelecount_df)]), colnames(phasing_association_df)))>1)
