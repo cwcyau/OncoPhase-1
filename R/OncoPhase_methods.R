@@ -120,7 +120,7 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
   
   
   #Initialising the mutationprofile matrice and  setting the headers
-  mutation_profiles=c("varcounts_snv","refcounts_snv","major_cn","minor_cn","varcounts_snp","refcounts_snp","normal_fraction","scnv_fraction","nbSamples","nbSNPs")
+  mutation_profiles=c("varcounts_snv","refcounts_snv","major_cn","minor_cn","varcounts_snp","refcounts_snp","normal_fraction","scnv_fraction","nbSamples","nbSNP")
   mutationprofile<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=nbFirstColumns + 10)
   mutationprofile<-as.data.frame(mutationprofile)
   colnames(mutationprofile) <- c(colnames(somatic_snp_allelecount_df[1:nbFirstColumns]),mutation_profiles)
@@ -242,6 +242,7 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
           refwellcount_germlines[sample] = ref_allelecount_LinkedGermline_df[closest_germline, sample]
         }
         
+        linkedGermlines_list = closest_germline
         snp_allelecount_snp  = snpwellcount_germlines
         ref_allelecount_snp  = refwellcount_germlines
       }
@@ -254,23 +255,49 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
     #Remove samples either NA at the SNV or NA at all the SNP
     mylist=unlist(snp_allelecount_snv)
     notNASNV_samples=names(mylist[!is.na(mylist)])
-    mylist2=colMeans(snp_allelecount_df[linkedGermlines_list, samples_to_pool],na.rm=T)
-    notNASNP_samples=names(mylist2[!is.na(mylist2)])    
-    notNA_Samples=intersect(notNASNV_samples, notNASNP_samples)
+    if(mode!="SNVOnly"){
+      mylist2=colMeans(snp_allelecount_df[linkedGermlines_list, samples_to_pool],na.rm=T)
+      if(mode=="FlankingSNP")
+        mylist2=colMeans(snp_allelecount_df[samples_to_pool],na.rm=T)
+      notNASNP_samples=names(mylist2[!is.na(mylist2)])    
+      notNA_Samples=intersect(notNASNV_samples, notNASNP_samples)
+      
+    }else{
+      notNA_Samples=notNASNV_samples
+    }
     
     #Select only the samples with high quality call.
     Qual = unlist(strsplit(as.character(snp_allelecount_df[mut,"Qual"]),":"))[get_originalorder(notNA_Samples)]
     notNA_Samples=notNA_Samples[Qual!="L" & Qual !="L|L"]
     nbSamples=length(notNA_Samples)
-    nbSNPs=length(linkedGermlines_list)
-    if(length(notNA_Samples)==0)
-      next
     
     #####Pooling the counts 
     varcounts_snv=sum(snp_allelecount_snv[mut, notNA_Samples],na.rm=T)
-    varcounts_snp=sum(apply(snp_allelecount_snp[linkedGermlines_list, notNA_Samples,drop=F],2,function(x) mean(remove_outliers(x),na.rm=T)),na.rm=T)
+    
     refcounts_snv=sum(ref_allelecount_snv[mut, notNA_Samples],na.rm=T)
-    refcounts_snp=sum(apply(ref_allelecount_snp[linkedGermlines_list, notNA_Samples,drop=F],2,function(x) mean(remove_outliers(x),na.rm=T)),na.rm=T)
+    if(mode!="SNVOnly"){
+      nbSNPs=length(linkedGermlines_list)
+      if(mode=="PhasedSNP"){
+        varcounts_snp=sum(apply(snp_allelecount_snp[linkedGermlines_list, notNA_Samples,drop=F],2,function(x) mean(remove_outliers(x),na.rm=T)),na.rm=T)
+        refcounts_snp=sum(apply(ref_allelecount_snp[linkedGermlines_list, notNA_Samples,drop=F],2,function(x) mean(remove_outliers(x),na.rm=T)),na.rm=T)
+        
+      }else if (mode=="FlankingSNP"){
+        varcounts_snp=sum(snp_allelecount_snp[notNA_Samples])
+        refcounts_snp=sum(ref_allelecount_snp[notNA_Samples])
+        
+      }else{
+        stop("\n\n was expecting PhasedSNP or FlankingSNP for the mode")
+      }
+      
+      varcounts_snp=as.numeric(format(round(varcounts_snp, 2), nsmall = 2))
+      refcounts_snp=as.numeric(format(round(refcounts_snp, 2), nsmall = 2))
+      
+      
+    }else{
+      varcounts_snp=NA
+      refcounts_snp=NA
+      nbSNPs=NA
+    }
     
     
     #   if(mut %in% rownames(bad_mutations))
@@ -1391,7 +1418,9 @@ getPhasedSNPPrevalence_on_singlemutation<-function(lambda_S,mu_S,major_cn,minor_
     residualNorm = PrevalenceCond["residual"]
     
     condensedPrevalence=paste( context,Prevalence,paste(AllPrevalences,collapse="|"),residualNorm, sep=":")
-    
+    lambda_G=as.numeric(format(round(lambda_G, 2), nsmall = 2))
+    mu_G=as.numeric(format(round(mu_G, 2), nsmall = 2))
+    format(round(x, 2), nsmall = 2)
     input_values = paste(lambda_S,mu_S,major_cn,minor_cn, lambda_G, mu_G,sep=":")
     
     if(detail){
