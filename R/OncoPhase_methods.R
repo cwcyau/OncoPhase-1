@@ -10,7 +10,7 @@ remove_outliers <- function(x, na.rm = TRUE, ...) {
 }
 
 #' @export
-getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,samples_to_pool=NULL,  nbFirstColumns=3, region=NULL,  LocusRadius = 10000,ProgressOutputs=T)
+getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,mode="PhasedSNP",cnv_fraction=NULL, phasing_association_df=NULL,NormalcellContamination_df=NULL,samples_to_pool=NULL,  nbFirstColumns=3, region=NULL,  LocusRadius = 10000,ProgressOutputs=T,alternative=1)
 {
   #set the mode if numeric, 0=SNVOnly, 1 = PhasedSNP, 2=FlankingSNP, 3 = OptimalSNP
   numeric_mode=c("SNVOnly", "PhasedSNP","FlankingSNP","OptimalSNP")
@@ -266,10 +266,15 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
       notNA_Samples=notNASNV_samples
     }
     
-    #Select only the samples with high quality call.
-    Qual = unlist(strsplit(as.character(snp_allelecount_df[mut,"Qual"]),":"))[get_originalorder(notNA_Samples)]
-    notNA_Samples=notNA_Samples[Qual!="L" & Qual !="L|L"]
-    nbSamples=length(notNA_Samples)
+    
+    if(alternative){
+      #Select only the samples with high quality call.
+      Qual = unlist(strsplit(as.character(snp_allelecount_df[mut,"Qual"]),":"))[get_originalorder(notNA_Samples)]
+      notNA_Samples=notNA_Samples[Qual!="L" & Qual !="L|L"]
+
+    }
+   
+    nbSamples=length(notNA_Samples)  
     
     #####Pooling the counts 
     varcounts_snv=sum(snp_allelecount_snv[mut, notNA_Samples],na.rm=T)
@@ -361,6 +366,7 @@ getPooledSampleMatice<-function(snp_allelecount_df, ref_allelecount_df, major_co
   mutationprofile = mutationprofile[!is.na(mutationprofile$varcounts_snv),]
   mutationprofile 
   }
+
 
 
 
