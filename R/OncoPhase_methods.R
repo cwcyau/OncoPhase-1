@@ -1240,17 +1240,24 @@ getPhasedSNPPrevalence<-function( lambda_S,mu_S,major_cn,minor_cn,lambda_G, mu_G
      # print(prevalence)
       
       #  if detail, the context and  tree type of prevalence are collapsed else only the prevalence is outputed
-      if(!is.na(prevalence)){
+      
+      prev_S[sample] =NA
+      
+     # if(length(prevalence) > 0 && !is.na(prevalence))
+     #   {
         if(detail==2){
+          if(length(prevalence) > 0)
           prev_S[sample] = prevalence$CondensedPrevalence
         } else if(detail==1){
+          if(length(prevalence) > 0)
           prev_S[sample] =list(prevalence)
         }else{
+          if(length(prevalence) > 0)
           prev_S[sample] =prevalence$Prevalence
         }
-      }else{
-        prev_S[sample] =NA
-      }
+     # }else{
+     #   prev_S[sample] =NA
+     # }
 
     }
     
@@ -2026,20 +2033,20 @@ getPrevalenceSNVOnly<-function(lambda_S,mu_S,major_cn,minor_cn,context,sigma=NUL
 getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode="PhasedSNP",  LocusRadius)
   
 {
- 
-    #We then  retrieve for each somatic mutation the list of germline mutations to consider for the prevalence computation
-    # a) if PhasedSNP mode, then the considered germline are the germline mutations phased to the somatic mutation and located within the same locus
-    # b) if FlankingSNP mode then the considered germline are the close germlines located within LocusRadius distance from the somatic mutation.
-    #c) if OptimalSNP mode tho columns are provided, the first for the phased germline, and if only there is not phasing information for this mutation, then the second column contains the close germlines located within LocusRadius
-    
-    
-    # LinkedGermlineMutation=getLocusGermlineMutations(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  samples_to_pool,mode,  LocusRadius)
-    
- 
+  
+  #We then  retrieve for each somatic mutation the list of germline mutations to consider for the prevalence computation
+  # a) if PhasedSNP mode, then the considered germline are the germline mutations phased to the somatic mutation and located within the same locus
+  # b) if FlankingSNP mode then the considered germline are the close germlines located within LocusRadius distance from the somatic mutation.
+  #c) if OptimalSNP mode tho columns are provided, the first for the phased germline, and if only there is not phasing information for this mutation, then the second column contains the close germlines located within LocusRadius
+  
+  
+  # LinkedGermlineMutation=getLocusGermlineMutations(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  samples_to_pool,mode,  LocusRadius)
+  
+  
   
   Association=("Phased_List" %in% colnames(phasing_association_df))
   PhasingCode=(length(intersect(colnames(snp_allelecount_df[cifs:ncol(snp_allelecount_df)]), colnames(phasing_association_df)))>1)
-
+  
   #Preparing the data frame to contains the Germlines linked to each somatic mutation.
   LinkedGermlines<-matrix(nrow=nrow(somatic_snp_allelecount_df),ncol=4)
   LinkedGermlines<-as.data.frame(LinkedGermlines)
@@ -2132,7 +2139,19 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
         if(!is.null(cnv_fraction))   
           phi_germ=cnv_fraction[germ , sample]
         major_germ=major_copynumber_df[germ , sample]
-        minor_germ=major_copynumber_df[germ, sample]
+        minor_germ=minor_copynumber_df[germ, sample]
+        
+        
+        #To check zygocity, if minor_cn>0 and refcount_cnp=0, then homozygote
+        varcount_germ= snp_allelecount_df[germ,sample]
+        refcount_germ= ref_allelecount_df[germ,sample]
+        
+        if((minor_germ>0) && !is.na(refcount_germ) && (refcount_germ==0)){
+          #stop()
+          # cat("\n We stop here : ",refcount_germ, " for mut ", germ )
+          next        
+        }
+        
         
         if (  (major_germ==major_som || is.na(major_germ)|| is.na(major_som)) &&
               (minor_germ == minor_som || is.na(minor_germ)|| is.na(minor_som)))
@@ -2172,6 +2191,8 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
   LinkedGermlines 
   
 }
+
+
 
 
 
