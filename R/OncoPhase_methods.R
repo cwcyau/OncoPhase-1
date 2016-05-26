@@ -2145,7 +2145,7 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
         #To check zygocity, if minor_cn>0 and refcount_cnp=0, then homozygote
         varcount_germ= snp_allelecount_df[germ,sample]
         refcount_germ= ref_allelecount_df[germ,sample]
-        
+        if(!is.na(minor_germ) && !is.na(refcount_germ))
         if((minor_germ>0) && !is.na(refcount_germ) && (refcount_germ==0)){
           #stop()
           # cat("\n We stop here : ",refcount_germ, " for mut ", germ )
@@ -2174,7 +2174,7 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
         #To check zygocity, if minor_cn>0 and refcount_cnp=0, then homozygote
         varcount_germ= snp_allelecount_df[germ,sample]
         refcount_germ= ref_allelecount_df[germ,sample]
-        
+        if(!is.na(minor_germ) && !is.na(refcount_germ))
         if((minor_germ>0) && !is.na(refcount_germ) && (refcount_germ==0)){
           #stop()
           # cat("\n We stop here : ",refcount_germ, " for mut ", germ )
