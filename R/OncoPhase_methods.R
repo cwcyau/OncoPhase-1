@@ -2128,7 +2128,7 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
       if(!is.null(cnv_fraction))  
         phi_som=cnv_fraction[mut,sample]
       major_som=major_copynumber_df[mut,sample]
-      minor_som=major_copynumber_df[mut,sample]
+      minor_som=minor_copynumber_df[mut,sample]
       
       absence_copynumberprofile=c()
       count_lower_than_somatic<-c() # For more accuracy in case of abundance of germline, someone can choose to exclude germline having an allele count less than the somatic allele count.
@@ -2167,7 +2167,7 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
         if(!is.null(cnv_fraction))   
           phi_germ=cnv_fraction[germ , sample]
         major_germ=major_copynumber_df[germ , sample]
-        minor_germ=major_copynumber_df[germ, sample]
+        minor_germ=minor_copynumber_df[germ, sample]
         
         
 #         #To check zygocity, if minor_cn>0 and refcount_cnp=0, then homozygote
