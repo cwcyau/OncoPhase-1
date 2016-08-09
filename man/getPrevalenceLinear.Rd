@@ -34,7 +34,7 @@ This is a generic function to compute the detailed prevalence of a single mutati
 }
 \examples{
 
-Prevalences = getPrevalenceLinear(8, 5,3,10,2,1,"C1")
+Prevalences = getPrevalenceLinear(8, 5,2,1,3,10,"C1")
  
   print(Prevalences)
 # Germ  Alt Both 

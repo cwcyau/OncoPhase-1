@@ -1,0 +1,6 @@
+mutation_id	ref_counts	var_counts	normal_cn	minor_cn	major_cn
+1	499	501	2	1	1
+2	571	429	2	1	1
+3	704	296	2	1	2
+4	925	75	2	1	1
+5	825	175	2	0	2

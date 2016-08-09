@@ -34,7 +34,7 @@ This is a generic function to generate the matrices of the linear system (see th
 }
 \examples{
 
-Matrices = getMatrices(8, 5,3,10,2,1,"C1")
+Matrices = getMatrices(8, 5,2,1,3,10,"C1")
  
  print(Matrices)
 # $context

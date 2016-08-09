@@ -60,9 +60,8 @@ This is a generic function to compute the cellular prevalence of somatic mutatio
 #Example 1: 
 
 input_file=system.file("extdata","phylogeny1_d300_n80.tsv", package = "OncoPhase")
-input_df<-read.table(input_file,header=T)
+input_df<-read.table(input_file,header=TRUE)
 rownames(input_df) = input_df$mutation_id
-colnames(input_df) = c("mut_id", "lambda_S","mu_S","major_cn","minor_cn","lambda_G","mu_G")
 print(input_df)
 #  mut_id lambda_S mu_S major_cn minor_cn lambda_G mu_G
 #a      a      151  152        1        1      151  135
@@ -74,7 +73,7 @@ print(input_df)
 prevalence_df=getPrevalenceSingleSample(input_df,nbFirstColumns = 1)
 
 print(prevalence_df)
-  mut_id   Prev   Germ    Alt   Both Residual Context
+#  mut_id   Prev   Germ    Alt   Both Residual Context
 #  a      a 0.9967 0.0017 0.0017 0.9967  3.1e-03      C1
 #  b      b 0.8230 0.0890 0.0890 0.8230  1.3e-03      C1
 #  c      c 0.4010 0.6000 0.0910 0.3100  3.9e-33      C2
