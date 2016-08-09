@@ -1685,6 +1685,7 @@ getPrevalenceSNVOnly<-function(lambda_S,mu_S,major_cn,minor_cn,context,sigma=NUL
 
 #' @export
 getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_df, ref_allelecount_df, major_copynumber_df,minor_copynumber_df,cnv_fraction,phasing_association_df,  tumoursamples,mode="PhasedSNP",  LocusRadius)
+  
 {
   
   #We then  retrieve for each somatic mutation the list of germline mutations to consider for the prevalence computation
@@ -1800,6 +1801,7 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
         minor_germ=minor_copynumber_df[germ, sample]
         
         
+<<<<<<< HEAD
         #         #To check zygocity, if minor_cn>0 and refcount_cnp=0, then homozygote
         #         varcount_germ= snp_allelecount_df[germ,sample]
         #         refcount_germ= ref_allelecount_df[germ,sample]
@@ -1811,6 +1813,19 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
         #         }
         #         
         #         
+=======
+        #To check zygocity, if minor_cn>0 and refcount_cnp=0, then homozygote
+        varcount_germ= snp_allelecount_df[germ,sample]
+        refcount_germ= ref_allelecount_df[germ,sample]
+        if(!is.na(minor_germ) && !is.na(refcount_germ))
+        if((minor_germ>0) && !is.na(refcount_germ) && (refcount_germ==0)){
+          #stop()
+          # cat("\n We stop here : ",refcount_germ, " for mut ", germ )
+          next        
+        }
+        
+        
+>>>>>>> parent of c07d952... Fixed a bug on zygocity analysis
         if (  (major_germ==major_som || is.na(major_germ)|| is.na(major_som)) &&
               (minor_germ == minor_som || is.na(minor_germ)|| is.na(minor_som)))
         {
@@ -1829,6 +1844,7 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
         minor_germ=minor_copynumber_df[germ, sample]
         
         
+<<<<<<< HEAD
         #         #To check zygocity, if minor_cn>0 and refcount_cnp=0, then homozygote
         #         varcount_germ= snp_allelecount_df[germ,sample]
         #         refcount_germ= ref_allelecount_df[germ,sample]
@@ -1839,6 +1855,18 @@ getLocusGermlineMutations<-function(somatic_snp_allelecount_df, snp_allelecount_
         #           next        
         #         }
         #         
+=======
+        #To check zygocity, if minor_cn>0 and refcount_cnp=0, then homozygote
+        varcount_germ= snp_allelecount_df[germ,sample]
+        refcount_germ= ref_allelecount_df[germ,sample]
+        if(!is.na(minor_germ) && !is.na(refcount_germ))
+        if((minor_germ>0) && !is.na(refcount_germ) && (refcount_germ==0)){
+          #stop()
+          # cat("\n We stop here : ",refcount_germ, " for mut ", germ )
+          next        
+        }
+        
+>>>>>>> parent of c07d952... Fixed a bug on zygocity analysis
         
         if ( (major_germ==major_som || is.na(major_germ)|| is.na(major_som)) && 
              (minor_germ == minor_som || is.na(minor_germ)|| is.na(minor_som)))
